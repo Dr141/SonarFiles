@@ -1,6 +1,5 @@
 package com.sonarfiles.app.presentation.navigation
 
-import com.sonarfiles.app.domain.model.ProtocolType
 import kotlinx.serialization.Serializable
 
 sealed interface ScreenRoutes {
@@ -15,7 +14,7 @@ sealed interface ScreenRoutes {
     data class ServerForm(
         val serverId: Long? = null,
         val initialHost: String? = null,
-        val initialProtocol: ProtocolType? = null,
+        val initialProtocol: String? = null,
         val initialHostname: String? = null
     ) : ScreenRoutes
 

@@ -63,7 +63,7 @@ fun SonarNavHost(
                     navController.navigate(
                         ScreenRoutes.ServerForm(
                             initialHost = host.ipAddress,
-                            initialProtocol = protocol,
+                            initialProtocol = protocol.name,
                             initialHostname = host.hostname
                         )
                     )
@@ -77,9 +77,13 @@ fun SonarNavHost(
 
             LaunchedEffect(route) {
                 if (route.initialHost != null) {
+                    val protocol = route.initialProtocol?.let {
+                        runCatching { ProtocolType.valueOf(it) }.getOrNull()
+                    } ?: ProtocolType.SMB
+
                     serverFormViewModel.prefillFromDiscoveredHost(
                         ip = route.initialHost,
-                        protocol = route.initialProtocol ?: ProtocolType.SMB,
+                        protocol = protocol,
                         suggestedHostname = route.initialHostname
                     )
                 }

@@ -5,11 +5,15 @@
 -keep @androidx.room.Dao class * { *; }
 -keep class * implements androidx.room.RoomDatabase { *; }
 
-# Keep domain models serialization
+# Keep Navigation Compose & Kotlinx Serialization classes
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
 -keepclassmembers class * {
     @kotlinx.serialization.Serializable *;
 }
+-keep class com.sonarfiles.app.presentation.navigation.** { *; }
+-keepclassmembers class com.sonarfiles.app.presentation.navigation.** { *; }
+-keep class com.sonarfiles.app.domain.model.** { *; }
+-keepclassmembers class com.sonarfiles.app.domain.model.** { *; }
 
 # SMBJ, MBassador & javax.el
 -dontwarn javax.el.**
