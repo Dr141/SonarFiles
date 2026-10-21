@@ -3,6 +3,7 @@ package com.sonarfiles.app.presentation.screens.explorer
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sonarfiles.app.core.network.NetworkConnectivityObserver
 import com.sonarfiles.app.domain.model.AuthCredentials
 import com.sonarfiles.app.domain.model.RemoteFile
 import com.sonarfiles.app.domain.model.ServerConfig
@@ -27,7 +28,8 @@ class ExplorerViewModel @Inject constructor(
     private val connectionFactory: RemoteConnectionFactory,
     private val unlockServerCredentialsUseCase: UnlockServerCredentialsUseCase,
     private val listDirectoryUseCase: ListDirectoryUseCase,
-    private val manageRemoteFileUseCase: ManageRemoteFileUseCase
+    private val manageRemoteFileUseCase: ManageRemoteFileUseCase,
+    private val connectivityObserver: NetworkConnectivityObserver
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ExplorerUiState())
@@ -43,6 +45,18 @@ class ExplorerViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, isAuthenticating = true, errorMessage = null) }
+
+            if (!connectivityObserver.isCurrentlyWifiConnected()) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isAuthenticating = false,
+                        errorMessage = "Conexão Wi-Fi não detectada. Conecte-se à rede Wi-Fi local para acessar este servidor."
+                    )
+                }
+                return@launch
+            }
+
             val server = serverRepository.getServerById(serverId)
             if (server == null) {
                 _uiState.update { it.copy(isLoading = false, isAuthenticating = false, errorMessage = "Servidor não encontrado.") }

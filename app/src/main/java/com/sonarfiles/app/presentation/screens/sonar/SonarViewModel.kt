@@ -2,6 +2,7 @@ package com.sonarfiles.app.presentation.screens.sonar
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sonarfiles.app.core.network.NetworkConnectivityObserver
 import com.sonarfiles.app.data.network.scanner.SubnetCalculator
 import com.sonarfiles.app.domain.model.DiscoveredHost
 import com.sonarfiles.app.domain.usecase.scan.ScanLocalNetworkUseCase
@@ -22,18 +23,41 @@ import javax.inject.Inject
 class SonarViewModel @Inject constructor(
     private val scanLocalNetworkUseCase: ScanLocalNetworkUseCase,
     private val wakeOnLanUseCase: WakeOnLanUseCase,
-    private val subnetCalculator: SubnetCalculator
+    private val subnetCalculator: SubnetCalculator,
+    private val connectivityObserver: NetworkConnectivityObserver
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SonarUiState())
+    private val _uiState = MutableStateFlow(
+        SonarUiState(isWifiConnected = connectivityObserver.isCurrentlyWifiConnected())
+    )
     val uiState: StateFlow<SonarUiState> = _uiState.asStateFlow()
 
     private var scanJob: Job? = null
 
     init {
-        loadSubnetInfo()
-        startScan()
+        viewModelScope.launch {
+            connectivityObserver.isWifiConnected.collect { isConnected ->
+                _uiState.update { it.copy(isWifiConnected = isConnected) }
+                if (isConnected) {
+                    loadSubnetInfo()
+                    if (_uiState.value.hosts.isEmpty() && !_uiState.value.isScanning) {
+                        startScan()
+                    }
+                } else {
+                    stopScan()
+                    _uiState.update {
+                        it.copy(
+                            localIp = null,
+                            subnetPrefix = null,
+                            errorMessage = "Dispositivo desconectado do Wi-Fi. Conecte-se para varrer a rede local."
+                        )
+                    }
+                }
+            }
+        }
     }
+
+    fun isWifiConnected(): Boolean = connectivityObserver.isCurrentlyWifiConnected()
 
     fun loadSubnetInfo() {
         val subnet = subnetCalculator.getLocalSubnet()
@@ -41,7 +65,8 @@ class SonarViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     localIp = subnet.localIp,
-                    subnetPrefix = "${subnet.localIp.substringBeforeLast('.')}.0/24"
+                    subnetPrefix = "${subnet.localIp.substringBeforeLast('.')}.0/24",
+                    errorMessage = null
                 )
             }
         } else {
@@ -52,8 +77,20 @@ class SonarViewModel @Inject constructor(
     }
 
     fun startScan() {
+        if (!connectivityObserver.isCurrentlyWifiConnected()) {
+            _uiState.update {
+                it.copy(
+                    isScanning = false,
+                    isWifiConnected = false,
+                    errorMessage = "Conecte-se a uma rede Wi-Fi local para varrer dispositivos."
+                )
+            }
+            return
+        }
+
         scanJob?.cancel()
         _uiState.update { it.copy(hosts = emptyList(), errorMessage = null) }
+        loadSubnetInfo()
 
         scanJob = viewModelScope.launch {
             scanLocalNetworkUseCase()

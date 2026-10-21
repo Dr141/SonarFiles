@@ -3,6 +3,7 @@ package com.sonarfiles.app.presentation.screens.server_form
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sonarfiles.app.core.network.NetworkConnectivityObserver
 import com.sonarfiles.app.domain.model.AuthCredentials
 import com.sonarfiles.app.domain.model.DiagnosticStepResult
 import com.sonarfiles.app.domain.model.ProtocolType
@@ -24,7 +25,8 @@ class ServerFormViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val serverRepository: ServerRepository,
     private val credentialRepository: CredentialRepository,
-    private val testConnectionDiagnosticUseCase: TestConnectionDiagnosticUseCase
+    private val testConnectionDiagnosticUseCase: TestConnectionDiagnosticUseCase,
+    private val connectivityObserver: NetworkConnectivityObserver
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ServerFormUiState())
@@ -60,10 +62,53 @@ class ServerFormViewModel @Inject constructor(
         }
     }
 
+    fun loadServerForEdit(serverId: Long) {
+        viewModelScope.launch {
+            try {
+                val server = serverRepository.getServerById(serverId) ?: return@launch
+                val credentials = credentialRepository.getCredentials(serverId).getOrNull()
+
+                val (username, password, domain) = when (credentials) {
+                    is AuthCredentials.Password -> Triple(
+                        credentials.username,
+                        String(credentials.password),
+                        credentials.domain ?: ""
+                    )
+                    else -> Triple("", "", "")
+                }
+
+                _uiState.update {
+                    it.copy(
+                        serverId = server.id,
+                        displayName = server.displayName,
+                        hostOrIp = server.hostOrIp,
+                        port = server.port.toString(),
+                        protocol = server.protocol,
+                        defaultShareOrPath = server.defaultShareOrPath,
+                        domainOrWorkgroup = server.domainOrWorkgroup ?: domain,
+                        username = username,
+                        password = password,
+                        macAddress = server.macAddress ?: "",
+                        requiresBiometrics = server.requiresBiometrics
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Erro ao carregar dados do servidor: ${e.localizedMessage}") }
+            }
+        }
+    }
+
     fun testConnection() {
         val state = _uiState.value
         if (state.hostOrIp.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Informe o IP ou Hostname do servidor.") }
+            return
+        }
+
+        if (!connectivityObserver.isCurrentlyWifiConnected()) {
+            _uiState.update {
+                it.copy(errorMessage = "Wi-Fi desconectado. Conecte-se à rede Wi-Fi local para testar a conexão.")
+            }
             return
         }
 

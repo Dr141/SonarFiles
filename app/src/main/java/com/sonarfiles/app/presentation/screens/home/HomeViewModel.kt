@@ -2,7 +2,9 @@ package com.sonarfiles.app.presentation.screens.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sonarfiles.app.core.network.NetworkConnectivityObserver
 import com.sonarfiles.app.domain.model.ServerConfig
+import com.sonarfiles.app.domain.repository.CredentialRepository
 import com.sonarfiles.app.domain.repository.ServerRepository
 import com.sonarfiles.app.domain.usecase.scan.WakeOnLanUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,7 +20,9 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
-    private val wakeOnLanUseCase: WakeOnLanUseCase
+    private val credentialRepository: CredentialRepository,
+    private val wakeOnLanUseCase: WakeOnLanUseCase,
+    private val connectivityObserver: NetworkConnectivityObserver
 ) : ViewModel() {
 
     private val _errorFlow = MutableStateFlow<String?>(null)
@@ -26,12 +30,14 @@ class HomeViewModel @Inject constructor(
     val uiState: StateFlow<HomeUiState> = combine(
         serverRepository.getAllServers(),
         serverRepository.getFavoriteServers(),
+        connectivityObserver.isWifiConnected,
         _errorFlow
-    ) { allServers, favorites, error ->
+    ) { allServers, favorites, isWifi, error ->
         HomeUiState(
             isLoading = false,
             servers = allServers,
             favoriteServers = favorites,
+            isWifiConnected = isWifi,
             errorMessage = error
         )
     }.catch { throwable ->
@@ -39,8 +45,13 @@ class HomeViewModel @Inject constructor(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = HomeUiState(isLoading = true)
+        initialValue = HomeUiState(
+            isLoading = true,
+            isWifiConnected = connectivityObserver.isCurrentlyWifiConnected()
+        )
     )
+
+    fun isWifiConnected(): Boolean = connectivityObserver.isCurrentlyWifiConnected()
 
     fun toggleFavorite(server: ServerConfig) {
         viewModelScope.launch {
@@ -50,7 +61,12 @@ class HomeViewModel @Inject constructor(
 
     fun deleteServer(server: ServerConfig) {
         viewModelScope.launch {
-            serverRepository.deleteServer(server)
+            try {
+                credentialRepository.deleteCredentials(server.id)
+                serverRepository.deleteServer(server)
+            } catch (e: Exception) {
+                _errorFlow.value = "Falha ao excluir servidor: ${e.localizedMessage}"
+            }
         }
     }
 

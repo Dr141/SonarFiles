@@ -40,6 +40,9 @@ fun SonarNavHost(
                 onNavigateToManualAdd = {
                     navController.navigate(ScreenRoutes.ServerForm())
                 },
+                onNavigateToEditServer = { serverId ->
+                    navController.navigate(ScreenRoutes.ServerForm(serverId = serverId))
+                },
                 onNavigateToExplorer = { serverId ->
                     navController.navigate(ScreenRoutes.Explorer(serverId = serverId))
                 },
@@ -76,7 +79,9 @@ fun SonarNavHost(
             val serverFormViewModel: ServerFormViewModel = hiltViewModel()
 
             LaunchedEffect(route) {
-                if (route.initialHost != null) {
+                if (route.serverId != null && route.serverId > 0L) {
+                    serverFormViewModel.loadServerForEdit(route.serverId)
+                } else if (route.initialHost != null) {
                     val protocol = route.initialProtocol?.let {
                         runCatching { ProtocolType.valueOf(it) }.getOrNull()
                     } ?: ProtocolType.SMB

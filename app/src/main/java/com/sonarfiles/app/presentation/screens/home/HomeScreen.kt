@@ -2,6 +2,10 @@ package com.sonarfiles.app.presentation.screens.home
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,8 +26,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderShared
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Star
@@ -35,6 +42,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -47,7 +56,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,12 +70,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sonarfiles.app.R
+import com.sonarfiles.app.core.ui.components.WifiRequiredDialog
+import com.sonarfiles.app.core.ui.components.WifiWarningBanner
 import com.sonarfiles.app.core.ui.theme.SonarCyanPrimary
+import com.sonarfiles.app.core.ui.theme.StatusError
 import com.sonarfiles.app.core.ui.theme.StatusSftpBadge
 import com.sonarfiles.app.core.ui.theme.StatusSmbBadge
 import com.sonarfiles.app.domain.model.ProtocolType
 import com.sonarfiles.app.domain.model.ServerConfig
-import kotlinx.coroutines.launch
+import com.sonarfiles.app.presentation.screens.home.components.ConfirmDeleteServerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +86,7 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToSonar: () -> Unit,
     onNavigateToManualAdd: () -> Unit,
+    onNavigateToEditServer: (serverId: Long) -> Unit,
     onNavigateToExplorer: (serverId: Long) -> Unit,
     onNavigateToTransfers: () -> Unit,
     onSendWakeOnLan: (mac: String) -> Unit,
@@ -79,6 +94,9 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    var serverToDelete by remember { mutableStateOf<ServerConfig?>(null) }
+    var wifiWarningDialogMessage by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -106,11 +124,18 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToManualAdd) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Adicionar Servidor",
+                            tint = SonarCyanPrimary
+                        )
+                    }
                     IconButton(onClick = onNavigateToTransfers) {
                         Icon(
                             imageVector = Icons.Filled.Sync,
                             contentDescription = "Transferências",
-                            tint = SonarCyanPrimary
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
@@ -121,7 +146,13 @@ fun HomeScreen(
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = onNavigateToSonar,
+                onClick = {
+                    if (viewModel.isWifiConnected()) {
+                        onNavigateToSonar()
+                    } else {
+                        wifiWarningDialogMessage = "Para varrer a rede local com o Sonar, conecte o dispositivo à rede Wi-Fi."
+                    }
+                },
                 containerColor = SonarCyanPrimary,
                 contentColor = Color.Black,
                 icon = { Icon(Icons.Filled.Radar, contentDescription = null) },
@@ -129,62 +160,126 @@ fun HomeScreen(
             )
         }
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center),
-                        color = SonarCyanPrimary
-                    )
-                }
+            // Wi-Fi Warning Banner when disconnected
+            AnimatedVisibility(
+                visible = !uiState.isWifiConnected,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                WifiWarningBanner(
+                    message = "Wi-Fi desconectado: conecte-se à sua rede local para acessar ou escanear servidores."
+                )
+            }
 
-                uiState.isEmpty -> {
-                    EmptyServersView(
-                        onScanClick = onNavigateToSonar,
-                        onManualAddClick = onNavigateToManualAdd,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                when {
+                    uiState.isLoading -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                            color = SonarCyanPrimary
+                        )
+                    }
 
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        item {
-                            Text(
-                                text = stringResource(R.string.servers_title),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            )
-                        }
-
-                        items(
-                            items = uiState.servers,
-                            key = { it.id }
-                        ) { server ->
-                            ServerCard(
-                                server = server,
-                                onClick = { onNavigateToExplorer(server.id) },
-                                onToggleFavorite = { viewModel.toggleFavorite(server) },
-                                onWakeOnLan = {
-                                    if (!server.macAddress.isNullOrBlank()) {
-                                        onSendWakeOnLan(server.macAddress)
-                                        Toast.makeText(context, "Pacote Wake-on-LAN enviado para ${server.displayName}", Toast.LENGTH_SHORT).show()
-                                    }
+                    uiState.isEmpty -> {
+                        EmptyServersView(
+                            onScanClick = {
+                                if (viewModel.isWifiConnected()) {
+                                    onNavigateToSonar()
+                                } else {
+                                    wifiWarningDialogMessage = "Para varrer a rede local com o Sonar, conecte o dispositivo à rede Wi-Fi."
                                 }
-                            )
+                            },
+                            onManualAddClick = onNavigateToManualAdd,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.servers_title),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "${uiState.servers.size} configurado(s)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+
+                            items(
+                                items = uiState.servers,
+                                key = { it.id }
+                            ) { server ->
+                                ServerCard(
+                                    server = server,
+                                    onClick = {
+                                        if (viewModel.isWifiConnected()) {
+                                            onNavigateToExplorer(server.id)
+                                        } else {
+                                            wifiWarningDialogMessage = "Para conectar ao servidor \"${server.displayName}\" (${server.hostOrIp}), conecte o aparelho à rede Wi-Fi local."
+                                        }
+                                    },
+                                    onEdit = { onNavigateToEditServer(server.id) },
+                                    onDelete = { serverToDelete = server },
+                                    onToggleFavorite = { viewModel.toggleFavorite(server) },
+                                    onWakeOnLan = {
+                                        if (!server.macAddress.isNullOrBlank()) {
+                                            onSendWakeOnLan(server.macAddress)
+                                            Toast.makeText(context, "Pacote Wake-on-LAN enviado para ${server.displayName}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    // Confirmation dialog for deleting a server
+    serverToDelete?.let { server ->
+        ConfirmDeleteServerDialog(
+            server = server,
+            onConfirm = {
+                viewModel.deleteServer(server)
+                serverToDelete = null
+                Toast.makeText(context, "Servidor \"${server.displayName}\" excluído", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { serverToDelete = null }
+        )
+    }
+
+    // Dialog when action requires active Wi-Fi
+    wifiWarningDialogMessage?.let { message ->
+        WifiRequiredDialog(
+            message = message,
+            onDismiss = { wifiWarningDialogMessage = null }
+        )
     }
 }
 
@@ -192,10 +287,14 @@ fun HomeScreen(
 fun ServerCard(
     server: ServerConfig,
     onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
     onToggleFavorite: () -> Unit,
     onWakeOnLan: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -231,7 +330,7 @@ fun ServerCard(
                 }
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             // Details
             Column(modifier = Modifier.weight(1f)) {
@@ -264,17 +363,6 @@ fun ServerCard(
                 }
             }
 
-            // Wake-on-LAN Button (se MAC configurado)
-            if (!server.macAddress.isNullOrBlank()) {
-                IconButton(onClick = onWakeOnLan) {
-                    Icon(
-                        imageVector = Icons.Filled.PowerSettingsNew,
-                        contentDescription = "Wake-on-LAN",
-                        tint = SonarCyanPrimary
-                    )
-                }
-            }
-
             // Favorite Button
             IconButton(onClick = onToggleFavorite) {
                 Icon(
@@ -282,6 +370,70 @@ fun ServerCard(
                     contentDescription = "Favorito",
                     tint = if (server.isFavorite) Color(0xFFFFD600) else MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            // Overflow Actions Menu (Edit, WoL, Delete)
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "Mais opções",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Editar Configuração") },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = null,
+                                tint = SonarCyanPrimary
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onEdit()
+                        }
+                    )
+
+                    if (!server.macAddress.isNullOrBlank()) {
+                        DropdownMenuItem(
+                            text = { Text("Wake-on-LAN") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.PowerSettingsNew,
+                                    contentDescription = null,
+                                    tint = SonarCyanPrimary
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onWakeOnLan()
+                            }
+                        )
+                    }
+
+                    DropdownMenuItem(
+                        text = { Text("Excluir Configuração", color = StatusError) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = null,
+                                tint = StatusError
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onDelete()
+                        }
+                    )
+                }
             }
         }
     }

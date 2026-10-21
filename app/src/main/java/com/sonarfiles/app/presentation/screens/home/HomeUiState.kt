@@ -6,6 +6,7 @@ data class HomeUiState(
     val isLoading: Boolean = true,
     val servers: List<ServerConfig> = emptyList(),
     val favoriteServers: List<ServerConfig> = emptyList(),
+    val isWifiConnected: Boolean = true,
     val errorMessage: String? = null
 ) {
     val isEmpty: Boolean

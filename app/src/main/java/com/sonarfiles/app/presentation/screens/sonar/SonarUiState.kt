@@ -4,6 +4,7 @@ import com.sonarfiles.app.domain.model.DiscoveredHost
 
 data class SonarUiState(
     val isScanning: Boolean = false,
+    val isWifiConnected: Boolean = true,
     val localIp: String? = null,
     val subnetPrefix: String? = null,
     val hosts: List<DiscoveredHost> = emptyList(),
