@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">SonarFiles</string>
+    <string name="sonar_scan_title">Sonar Network</string>
+    <string name="servers_title">Servidores Salvos</string>
+    <string name="no_servers_found">Nenhum servidor configurado.</string>
+    <string name="no_servers_subtitle">Toque no Radar para varrer a rede local ou adicione manualmente.</string>
+    <string name="action_scan">Varrer Rede</string>
+    <string name="action_add_manual">Conexão Manual</string>
+    <string name="action_test_connection">Testar Conexão</string>
+    <string name="action_wake_on_lan">Wake-on-LAN</string>
+</resources>
