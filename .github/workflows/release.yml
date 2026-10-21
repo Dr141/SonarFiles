@@ -6,6 +6,10 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      tag_name:
+        description: 'Tag de versão (ex: v1.0.0)'
+        required: false
+        default: 'v1.0.0'
       prerelease:
         description: 'Marcar como Pré-lançamento (Prerelease)?'
         required: false
@@ -66,7 +70,8 @@ jobs:
       - name: 📦 Preparar Artefatos e Checksums (SHA-256)
         id: prepare_artifacts
         run: |
-          VERSION="${GITHUB_REF_NAME:-v1.0.0}"
+          RAW_TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
+          VERSION="${RAW_TAG:-v1.0.0}"
           echo "Tag de Versão: $VERSION"
           
           mkdir -p release_artifacts
@@ -99,7 +104,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "SonarFiles ${{ steps.prepare_artifacts.outputs.version }}"
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.prepare_artifacts.outputs.version }}
           files: |
             release_artifacts/SonarFiles-*.apk
             release_artifacts/SonarFiles-*.aab
