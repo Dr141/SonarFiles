@@ -47,9 +47,7 @@ class SftpRemoteFileSystem(
                     client.authPassword(credentials.username, String(credentials.password))
                 }
                 is AuthCredentials.SshKey -> {
-                    val passwordFinder = if (credentials.passphrase != null) {
-                        PasswordUtils.createDummyFinder(credentials.passphrase)
-                    } else null
+                    val passwordFinder = PasswordUtils.createOneOff(credentials.passphrase)
                     val keyProvider = client.loadKeys(String(credentials.privateKeyPem), null, passwordFinder)
                     client.authPublickey(credentials.username, keyProvider)
                 }
