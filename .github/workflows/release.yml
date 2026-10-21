@@ -1,0 +1,111 @@
+name: Release Build & Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Marcar como Pré-lançamento (Prerelease)?'
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: 'Criar como Rascunho (Draft)?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release APK / AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout do Código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ☕ Configurar JDK 17 (Eclipse Adoptium Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🐘 Configurar Gradle com Cache Otimizado
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 🔑 Configurar Assinatura de Release (Keystore)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS_VAL: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASS_VAL: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Decodificando Keystore a partir de GitHub Secrets..."
+            echo "$KEYSTORE_BASE64" | base64 --decode > app/release.keystore
+            echo "KEYSTORE_FILE=release.keystore" >> $GITHUB_ENV
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASS" >> $GITHUB_ENV
+            echo "KEY_ALIAS=$KEY_ALIAS_VAL" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=$KEY_PASS_VAL" >> $GITHUB_ENV
+          else
+            echo "⚠️ Secrets de Keystore não detectados. O build usará assinatura debug para teste de release."
+          fi
+
+      - name: 🔨 Compilar APK e App Bundle (AAB)
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease bundleRelease --stacktrace
+
+      - name: 📦 Preparar Artefatos e Checksums (SHA-256)
+        id: prepare_artifacts
+        run: |
+          VERSION="${GITHUB_REF_NAME:-v1.0.0}"
+          echo "Tag de Versão: $VERSION"
+          
+          mkdir -p release_artifacts
+          
+          # Copia e renomeia o APK
+          APK_SRC="app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK_SRC" ]; then
+            APK_SRC="app/build/outputs/apk/release/app-release-unsigned.apk"
+          fi
+          
+          APK_DEST="release_artifacts/SonarFiles-${VERSION}.apk"
+          cp "$APK_SRC" "$APK_DEST"
+
+          # Copia e renomeia o AAB (Bundle para Google Play)
+          AAB_SRC="app/build/outputs/bundle/release/app-release.aab"
+          AAB_DEST="release_artifacts/SonarFiles-${VERSION}.aab"
+          cp "$AAB_SRC" "$AAB_DEST"
+
+          # Gera Checksums SHA-256 para integridade
+          cd release_artifacts
+          sha256sum "SonarFiles-${VERSION}.apk" > checksums.txt
+          sha256sum "SonarFiles-${VERSION}.aab" >> checksums.txt
+          cd ..
+
+          echo "apk_path=$APK_DEST" >> $GITHUB_OUTPUT
+          echo "aab_path=$AAB_DEST" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: 🚀 Criar GitHub Release e Anexar Binários
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "SonarFiles ${{ steps.prepare_artifacts.outputs.version }}"
+          tag_name: ${{ github.ref_name }}
+          files: |
+            release_artifacts/SonarFiles-*.apk
+            release_artifacts/SonarFiles-*.aab
+            release_artifacts/checksums.txt
+          generate_release_notes: true
+          draft: ${{ github.event.inputs.draft || false }}
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -178,10 +178,41 @@ SonarFiles/
 - **Android SDK:** Compile SDK 35, Min SDK 26 (Android 8.0 Oreo ou superior).
 
 ### Como Compilar e Rodar
-1. Clone ou abra a pasta [`SonarFiles`](file:///c:/Users/usuarioDM/Documents/Android/SonarFiles) no **Android Studio**.
+1. Clone ou abra a pasta [`SonarFiles`](file:///c:/Users/usuarioDM\Documents\Android\SonarFiles) no **Android Studio**.
 2. Aguarde a sincronização inicial do Gradle (`Sync Project with Gradle Files`).
 3. Conecte um dispositivo Android físico (recomendado para testes de rede local e biometria) ou inicie um Emulador configurado na mesma rede Wi-Fi.
 4. Clique em **Run 'app'** (`Shift + F10`).
+
+---
+
+## 🤖 Automação & CI/CD (GitHub Actions)
+
+O repositório inclui fluxos de trabalho prontos em [`.github/workflows`](.github/workflows):
+
+### 1. Geração Automática de Release (`release.yml`)
+Disparado automaticamente ao criar uma tag Git no padrão semântico `v*` (ex: `v1.0.0`) ou manualmente pela aba *Actions* do GitHub:
+- Configura o ambiente Java 17 e cache de dependências Gradle.
+- Compila o binário APK (`SonarFiles-vX.X.X.apk`) e o bundle oficial da Google Play AAB (`SonarFiles-vX.X.X.aab`).
+- Gera as somas de verificação de integridade **SHA-256** (`checksums.txt`).
+- Publica uma **GitHub Release** oficial anexando os artefatos compilados e gerando changelog automático.
+
+#### Como Disparar uma Release:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+#### Configuração de Assinatura Oficial (Opcional):
+Para assinar os APKs de release com sua chave privada no GitHub, adicione os seguintes segredos em **Settings > Secrets and variables > Actions**:
+- `RELEASE_KEYSTORE_BASE64`: Arquivo `.keystore` ou `.jks` codificado em base64 (`base64 -w 0 seu-keystore.jks`).
+- `RELEASE_KEYSTORE_PASSWORD`: Senha do arquivo keystore.
+- `RELEASE_KEY_ALIAS`: Alias da chave de assinatura.
+- `RELEASE_KEY_PASSWORD`: Senha da chave específica.
+
+*(Caso os segredos não estejam cadastrados, a Action utiliza automaticamente a assinatura de debug para garantir que os binários de teste continuem sendo gerados sem falhar o build).*
+
+### 2. Validação Contínua (`ci.yml`)
+Compila e valida o projeto em cada *Pull Request* e *Push* nas branches principais (`main`, `master`, `develop`).
 
 ---
 
