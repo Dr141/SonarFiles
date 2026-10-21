@@ -15,6 +15,8 @@ import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
 import net.schmizz.sshj.sftp.RemoteResourceInfo
 import net.schmizz.sshj.sftp.SFTPClient
+import net.schmizz.sshj.userauth.method.AuthNone
+import net.schmizz.sshj.userauth.password.PasswordUtils
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.OutputStream
@@ -45,15 +47,14 @@ class SftpRemoteFileSystem(
                     client.authPassword(credentials.username, String(credentials.password))
                 }
                 is AuthCredentials.SshKey -> {
-                    val keyProvider = if (credentials.passphrase != null) {
-                        client.loadKeys(String(credentials.privateKeyPem), null, String(credentials.passphrase))
-                    } else {
-                        client.loadKeys(String(credentials.privateKeyPem), null, null)
-                    }
+                    val passwordFinder = if (credentials.passphrase != null) {
+                        PasswordUtils.createDummyFinder(credentials.passphrase)
+                    } else null
+                    val keyProvider = client.loadKeys(String(credentials.privateKeyPem), null, passwordFinder)
                     client.authPublickey(credentials.username, keyProvider)
                 }
                 is AuthCredentials.Anonymous -> {
-                    client.authNone(credentials.javaClass.simpleName)
+                    client.auth(serverConfig.domainOrWorkgroup ?: "anonymous", AuthNone())
                 }
             }
 

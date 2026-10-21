@@ -2,8 +2,8 @@ package com.sonarfiles.app.data.network.client.sftp
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import net.schmizz.sshj.common.SecurityUtils
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
-import net.schmizz.sshj.transport.verification.OpenSSHKnownHosts
 import java.io.File
 import java.security.PublicKey
 import javax.inject.Inject
@@ -14,33 +14,31 @@ class KnownHostsVerifier @Inject constructor(
     @ApplicationContext private val context: Context
 ) : HostKeyVerifier {
 
-    private val knownHostsFile: File by lazy {
-        File(context.filesDir, "known_hosts").apply {
+    private val hostsFile: File by lazy {
+        File(context.filesDir, "known_hosts.txt").apply {
             if (!exists()) createNewFile()
         }
     }
 
     override fun verify(hostname: String, port: Int, key: PublicKey): Boolean {
+        val hostKeyId = "$hostname:$port"
+        val fingerprint = SecurityUtils.getFingerprint(key)
+
         return try {
-            val openSSHKnownHosts = OpenSSHKnownHosts(knownHostsFile)
-            if (openSSHKnownHosts.verify(hostname, port, key)) {
-                true
-            } else {
-                // Trust On First Use (TOFU): se for o primeiro acesso a este host, salva a chave
-                val entries = openSSHKnownHosts.entries()
-                val isKnownHost = entries.any { entry ->
-                    entry.appliesTo("$hostname:$port") || entry.appliesTo(hostname)
-                }
-                if (!isKnownHost) {
-                    openSSHKnownHosts.add(OpenSSHKnownHosts.SimpleEntry(null, "$hostname:$port", OpenSSHKnownHosts.KeyType.fromKey(key), key), true)
-                    true
+            synchronized(hostsFile) {
+                val lines = hostsFile.readLines()
+                val existing = lines.find { it.startsWith("$hostKeyId=") }
+                if (existing != null) {
+                    val savedFingerprint = existing.substringAfter("=")
+                    savedFingerprint == fingerprint
                 } else {
-                    // Chave existente divergente (possível ataque MITM ou reinstalação do servidor)
-                    false
+                    // Trust On First Use (TOFU): salva o fingerprint da primeira conexao
+                    hostsFile.appendText("$hostKeyId=$fingerprint\n")
+                    true
                 }
             }
         } catch (_: Exception) {
-            true // Fallback tolerante em caso de erro de parse
+            true // Fallback tolerante em caso de erro de I/O
         }
     }
 

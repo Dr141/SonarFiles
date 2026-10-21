@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import javax.inject.Inject
@@ -115,7 +116,7 @@ class CredentialVaultDataSource @Inject constructor(
     }
 
     private fun writeStoreInternal(store: VaultStore) {
-        val jsonString = json.encodeToString(store)
+        val jsonString = json.encodeToString(VaultStore.serializer(), store)
         val encryptedBytes = cryptoManager.encrypt(jsonString.toByteArray(Charsets.UTF_8))
         vaultFile.writeBytes(encryptedBytes)
     }
