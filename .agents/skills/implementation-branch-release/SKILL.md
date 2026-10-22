@@ -31,7 +31,8 @@ Esta skill estabelece o procedimento padrão para implementar qualquer novo plan
 [Push Remoto]    ──> git push origin <branch> && git push origin <tag>
          │
          ▼
-[GitHub Actions] ──> release.yml compila APK/AAB e publica a GitHub Release
+[GitHub Actions] ──> release.yml compila APK/AAB, publica GitHub Release,
+                     cria Pull Request e mescla com a main automaticamente!
 ```
 
 ---
@@ -123,3 +124,4 @@ Após o push da tag:
 1. Acesse o GitHub: `https://github.com/<usuario>/<repositorio>/actions`.
 2. Verifique a execução do job **"Release Build & Publish"**.
 3. Confirme a publicação do APK (`SonarFiles-v1.1.0.apk`) e AAB em **Releases**.
+4. Confirme que o Pull Request foi gerado e mesclado automaticamente na branch `main`.
