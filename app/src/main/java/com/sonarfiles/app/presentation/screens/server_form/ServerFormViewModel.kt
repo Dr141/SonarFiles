@@ -161,7 +161,10 @@ class ServerFormViewModel @Inject constructor(
                             currentMap[stepResult.step] = StepStatus.Passed(stepResult.latencyMs, stepResult.details)
                         }
                         is DiagnosticStepResult.StepFailed -> {
-                            currentMap[stepResult.step] = StepStatus.Failed(stepResult.reason)
+                            currentMap[stepResult.step] = StepStatus.Failed(
+                                reason = stepResult.reason,
+                                hint = stepResult.hint
+                            )
                         }
                     }
                     current.copy(

@@ -1,5 +1,6 @@
 package com.sonarfiles.app.domain.usecase.connection
 
+import com.sonarfiles.app.core.common.ConnectionErrorFormatter
 import com.sonarfiles.app.core.common.DispatchersProvider
 import com.sonarfiles.app.data.network.scanner.PortProber
 import com.sonarfiles.app.domain.model.AuthCredentials
@@ -23,6 +24,11 @@ class TestConnectionDiagnosticUseCase @Inject constructor(
         credentials: AuthCredentials
     ): Flow<DiagnosticStepResult> = flow {
         val host = serverConfig.hostOrIp
+        val username = when (credentials) {
+            is AuthCredentials.Password -> credentials.username
+            is AuthCredentials.SshKey -> credentials.username
+            is AuthCredentials.Anonymous -> null
+        }
 
         // Passo 1: Alcançabilidade do Host (DNS / IP Reachable)
         emit(DiagnosticStepResult.InProgress(DiagnosticStepResult.Step.HOST_REACHABILITY))
@@ -31,10 +37,17 @@ class TestConnectionDiagnosticUseCase @Inject constructor(
             val addr = InetAddress.getByName(host)
             addr.isReachable(3000) || true // Se ICMP for bloqueado por firewall, prossegue para checagem de porta
         } catch (e: Exception) {
+            val formatted = ConnectionErrorFormatter.format(
+                step = DiagnosticStepResult.Step.HOST_REACHABILITY,
+                throwable = e,
+                host = host
+            )
             emit(
                 DiagnosticStepResult.StepFailed(
                     DiagnosticStepResult.Step.HOST_REACHABILITY,
-                    reason = "Não foi possível resolver ou alcançar o host '$host': ${e.localizedMessage}"
+                    reason = formatted.reason,
+                    errorCode = formatted.errorCode,
+                    hint = formatted.hint
                 )
             )
             return@flow
@@ -46,10 +59,18 @@ class TestConnectionDiagnosticUseCase @Inject constructor(
         emit(DiagnosticStepResult.InProgress(DiagnosticStepResult.Step.PORT_OPEN))
         val probe = portProber.probePort(host, serverConfig.port, timeoutMs = 4000)
         if (!probe.isOpen) {
+            val formatted = ConnectionErrorFormatter.format(
+                step = DiagnosticStepResult.Step.PORT_OPEN,
+                throwable = null,
+                host = host,
+                port = serverConfig.port
+            )
             emit(
                 DiagnosticStepResult.StepFailed(
                     DiagnosticStepResult.Step.PORT_OPEN,
-                    reason = "Porta ${serverConfig.port} fechada ou bloqueada por firewall no host '$host'."
+                    reason = formatted.reason,
+                    errorCode = formatted.errorCode,
+                    hint = formatted.hint
                 )
             )
             return@flow
@@ -65,10 +86,19 @@ class TestConnectionDiagnosticUseCase @Inject constructor(
 
         if (connectResult.isFailure) {
             val err = connectResult.exceptionOrNull()
+            val formatted = ConnectionErrorFormatter.format(
+                step = DiagnosticStepResult.Step.AUTHENTICATION,
+                throwable = err,
+                username = username,
+                host = host,
+                port = serverConfig.port
+            )
             emit(
                 DiagnosticStepResult.StepFailed(
                     DiagnosticStepResult.Step.AUTHENTICATION,
-                    reason = "Falha na autenticação: ${err?.localizedMessage ?: "Credenciais inválidas"}"
+                    reason = formatted.reason,
+                    errorCode = formatted.errorCode,
+                    hint = formatted.hint
                 )
             )
             connection.close()
@@ -84,10 +114,19 @@ class TestConnectionDiagnosticUseCase @Inject constructor(
 
         if (listResult.isFailure) {
             val err = listResult.exceptionOrNull()
+            val formatted = ConnectionErrorFormatter.format(
+                step = DiagnosticStepResult.Step.ROOT_ACCESS,
+                throwable = err,
+                username = username,
+                host = host,
+                pathOrShare = serverConfig.defaultShareOrPath
+            )
             emit(
                 DiagnosticStepResult.StepFailed(
                     DiagnosticStepResult.Step.ROOT_ACCESS,
-                    reason = "Conexão aceita, mas acesso ao diretório '${serverConfig.defaultShareOrPath}' falhou: ${err?.localizedMessage}"
+                    reason = formatted.reason,
+                    errorCode = formatted.errorCode,
+                    hint = formatted.hint
                 )
             )
         } else {

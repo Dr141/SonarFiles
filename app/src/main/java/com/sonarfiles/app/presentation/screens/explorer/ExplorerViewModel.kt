@@ -3,8 +3,10 @@ package com.sonarfiles.app.presentation.screens.explorer
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sonarfiles.app.core.common.ConnectionErrorFormatter
 import com.sonarfiles.app.core.network.NetworkConnectivityObserver
 import com.sonarfiles.app.domain.model.AuthCredentials
+import com.sonarfiles.app.domain.model.DiagnosticStepResult
 import com.sonarfiles.app.domain.model.RemoteFile
 import com.sonarfiles.app.domain.model.ServerConfig
 import com.sonarfiles.app.domain.repository.RemoteConnectionFactory
@@ -80,11 +82,20 @@ class ExplorerViewModel @Inject constructor(
             val connResult = connectionFactory.getOrCreateConnection(server, credentials)
 
             if (connResult.isFailure) {
+                val username = (credentials as? AuthCredentials.Password)?.username
+                val formatted = ConnectionErrorFormatter.format(
+                    step = DiagnosticStepResult.Step.AUTHENTICATION,
+                    throwable = connResult.exceptionOrNull(),
+                    username = username,
+                    host = server.hostOrIp,
+                    port = server.port
+                )
+                val hintText = if (formatted.hint != null) " • ${formatted.hint}" else ""
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         isAuthenticating = false,
-                        errorMessage = "Falha ao conectar ao servidor: ${connResult.exceptionOrNull()?.localizedMessage}"
+                        errorMessage = "${formatted.reason}$hintText"
                     )
                 }
                 return@launch
@@ -123,10 +134,16 @@ class ExplorerViewModel @Inject constructor(
             if (result.isSuccess) {
                 _uiState.update { it.copy(files = result.getOrThrow(), isLoading = false) }
             } else {
+                val formatted = ConnectionErrorFormatter.format(
+                    step = DiagnosticStepResult.Step.ROOT_ACCESS,
+                    throwable = result.exceptionOrNull(),
+                    pathOrShare = path
+                )
+                val hintText = if (formatted.hint != null) " (${formatted.hint})" else ""
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = "Erro ao listar diretório: ${result.exceptionOrNull()?.localizedMessage}"
+                        errorMessage = "${formatted.reason}$hintText"
                     )
                 }
             }
@@ -213,7 +230,8 @@ class ExplorerViewModel @Inject constructor(
                 openCreateFolderDialog(false)
                 refresh()
             } else {
-                _uiState.update { it.copy(errorMessage = "Erro ao criar pasta: ${result.exceptionOrNull()?.localizedMessage}") }
+                val clean = ConnectionErrorFormatter.cleanTechnicalJargon(result.exceptionOrNull()?.localizedMessage.orEmpty())
+                _uiState.update { it.copy(errorMessage = "Erro ao criar pasta: $clean") }
             }
         }
     }
@@ -235,7 +253,8 @@ class ExplorerViewModel @Inject constructor(
                 selectFileForAction(null)
                 refresh()
             } else {
-                _uiState.update { it.copy(errorMessage = "Erro ao renomear: ${result.exceptionOrNull()?.localizedMessage}") }
+                val clean = ConnectionErrorFormatter.cleanTechnicalJargon(result.exceptionOrNull()?.localizedMessage.orEmpty())
+                _uiState.update { it.copy(errorMessage = "Erro ao renomear: $clean") }
             }
         }
     }
@@ -255,7 +274,8 @@ class ExplorerViewModel @Inject constructor(
                 selectFileForAction(null)
                 refresh()
             } else {
-                _uiState.update { it.copy(errorMessage = "Erro ao excluir: ${result.exceptionOrNull()?.localizedMessage}") }
+                val clean = ConnectionErrorFormatter.cleanTechnicalJargon(result.exceptionOrNull()?.localizedMessage.orEmpty())
+                _uiState.update { it.copy(errorMessage = "Erro ao excluir: $clean") }
             }
         }
     }

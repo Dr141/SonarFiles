@@ -1,6 +1,8 @@
 package com.sonarfiles.app.presentation.screens.server_form
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -392,73 +395,114 @@ fun DiagnosticStepRow(
     title: String,
     status: StepStatus
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(vertical = 6.dp)
     ) {
-        when (status) {
-            is StepStatus.Pending -> {
-                Icon(
-                    imageVector = Icons.Filled.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            is StepStatus.InProgress -> {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = SonarCyanPrimary
-                )
-            }
-            is StepStatus.Passed -> {
-                Icon(
-                    imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = StatusSuccess,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            is StepStatus.Failed -> {
-                Icon(
-                    imageVector = Icons.Filled.Error,
-                    contentDescription = null,
-                    tint = StatusError,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             when (status) {
+                is StepStatus.Pending -> {
+                    Icon(
+                        imageVector = Icons.Filled.RadioButtonUnchecked,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                is StepStatus.InProgress -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = SonarCyanPrimary
+                    )
+                }
                 is StepStatus.Passed -> {
-                    val detail = if (status.details != null) " (${status.details})" else ""
-                    Text(
-                        text = "Sucesso • ${status.latencyMs} ms$detail",
-                        fontSize = 11.sp,
-                        color = StatusSuccess
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = StatusSuccess,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
                 is StepStatus.Failed -> {
-                    Text(
-                        text = status.reason,
-                        fontSize = 11.sp,
-                        color = StatusError
+                    Icon(
+                        imageVector = Icons.Filled.Error,
+                        contentDescription = null,
+                        tint = StatusError,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
-                else -> {}
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                when (status) {
+                    is StepStatus.Passed -> {
+                        val detail = if (status.details != null) " (${status.details})" else ""
+                        Text(
+                            text = "Sucesso • ${status.latencyMs} ms$detail",
+                            fontSize = 11.sp,
+                            color = StatusSuccess
+                        )
+                    }
+                    is StepStatus.Failed -> {
+                        Text(
+                            text = status.reason,
+                            fontSize = 12.sp,
+                            color = StatusError,
+                            lineHeight = 16.sp
+                        )
+                    }
+                    else -> {}
+                }
+            }
+        }
+
+        if (status is StepStatus.Failed && !status.hint.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 32.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = SonarCyanPrimary.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = null,
+                    tint = SonarCyanPrimary,
+                    modifier = Modifier
+                        .size(15.dp)
+                        .padding(top = 1.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = status.hint,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 15.sp
+                )
             }
         }
     }

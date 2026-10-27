@@ -7,7 +7,7 @@ sealed interface StepStatus {
     data object Pending : StepStatus
     data object InProgress : StepStatus
     data class Passed(val latencyMs: Long, val details: String? = null) : StepStatus
-    data class Failed(val reason: String) : StepStatus
+    data class Failed(val reason: String, val hint: String? = null) : StepStatus
 }
 
 data class ServerFormUiState(
