@@ -42,7 +42,7 @@ jobs:
 
       - name: 🌐 Buscar todas as referências remotas
         run: |
-          git fetch origin "+refs/heads/*:refs/remotes/origin/*" --tags
+          git fetch origin "+refs/heads/*:refs/remotes/origin/*" --tags --force
 
       - name: ☕ Configurar JDK 17 (Eclipse Adoptium Temurin)
         uses: actions/setup-java@v4
