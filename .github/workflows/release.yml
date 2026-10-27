@@ -172,9 +172,7 @@ jobs:
               --base main \
               --head "$SOURCE_BRANCH" \
               --title "chore(release): merge $SOURCE_BRANCH into main ($VERSION)" \
-              --body "### 🚀 Release $VERSION concluída com sucesso!
-
-Este Pull Request foi criado e mesclado automaticamente pela pipeline de deploy após a publicação da versão **$VERSION** da branch \`$SOURCE_BRANCH\`." 2>/dev/null || echo "")
+              --body "Release $VERSION concluída e publicada com sucesso a partir da branch $SOURCE_BRANCH." 2>/dev/null || echo "")
 
             if [ -n "$PR_URL" ]; then
               echo "✅ Pull Request criado com sucesso: $PR_URL"
