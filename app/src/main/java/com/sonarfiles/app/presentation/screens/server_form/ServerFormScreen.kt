@@ -1,6 +1,7 @@
 package com.sonarfiles.app.presentation.screens.server_form
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -40,6 +43,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -53,6 +57,7 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,6 +91,7 @@ fun ServerFormScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     var passwordVisible by remember { mutableStateOf(false) }
+    var showDiagnosticModal by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.savedSuccessfully) {
         if (uiState.savedSuccessfully) {
@@ -119,6 +125,80 @@ fun ServerFormScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 )
             )
+        },
+        bottomBar = {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.background,
+                tonalElevation = 6.dp,
+                shadowElevation = 8.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                ) {
+                    if (!uiState.errorMessage.isNullOrBlank()) {
+                        Text(
+                            text = uiState.errorMessage!!,
+                            color = StatusError,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                if (uiState.hostOrIp.isNotBlank()) {
+                                    showDiagnosticModal = true
+                                }
+                                viewModel.testConnection()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = !uiState.isTestingConnection
+                        ) {
+                            Icon(Icons.Filled.NetworkCheck, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Testar")
+                        }
+
+                        Button(
+                            onClick = viewModel::saveServer,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = SonarCyanPrimary,
+                                contentColor = Color.Black
+                            ),
+                            enabled = !uiState.isSaving
+                        ) {
+                            if (uiState.isSaving) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.Black
+                                )
+                            } else {
+                                Icon(Icons.Filled.Save, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Salvar", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -299,72 +379,211 @@ fun ServerFormScreen(
                 }
             }
 
-            // Painel de Diagnóstico Passo a Passo
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Diagnóstico da Conexão",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
 
-                    DiagnosticStepRow(
-                        title = "1. Alcance do Host (IP/DNS)",
-                        status = uiState.diagnosticResults[DiagnosticStepResult.Step.HOST_REACHABILITY] ?: StepStatus.Pending
-                    )
-                    DiagnosticStepRow(
-                        title = "2. Porta Aberta (${uiState.port})",
-                        status = uiState.diagnosticResults[DiagnosticStepResult.Step.PORT_OPEN] ?: StepStatus.Pending
-                    )
-                    DiagnosticStepRow(
-                        title = "3. Autenticação",
-                        status = uiState.diagnosticResults[DiagnosticStepResult.Step.AUTHENTICATION] ?: StepStatus.Pending
-                    )
-                    DiagnosticStepRow(
-                        title = "4. Acesso ao Diretório Raiz",
-                        status = uiState.diagnosticResults[DiagnosticStepResult.Step.ROOT_ACCESS] ?: StepStatus.Pending
-                    )
-                }
-            }
+    // Modal de Diagnóstico da Conexão
+    if (showDiagnosticModal) {
+        ModalBottomSheet(
+            onDismissRequest = { showDiagnosticModal = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            DiagnosticBottomSheetContent(
+                uiState = uiState,
+                onRetest = viewModel::testConnection,
+                onSaveAndClose = {
+                    showDiagnosticModal = false
+                    viewModel.saveServer()
+                },
+                onClose = { showDiagnosticModal = false }
+            )
+        }
+    }
+}
 
-            // Mensagem de erro geral
-            if (!uiState.errorMessage.isNullOrBlank()) {
+@Composable
+fun DiagnosticBottomSheetContent(
+    uiState: ServerFormUiState,
+    onRetest: () -> Unit,
+    onSaveAndClose: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val allPassed = uiState.diagnosticResults.values.all { it is StepStatus.Passed }
+    val anyFailed = uiState.diagnosticResults.values.any { it is StepStatus.Failed }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 32.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        // Cabeçalho do Modal
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = uiState.errorMessage!!,
-                    color = StatusError,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
+                    text = "Diagnóstico da Conexão",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "${if (uiState.protocol == ProtocolType.SMB) "SMB" else "SFTP"} • ${uiState.hostOrIp}:${uiState.port}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            IconButton(onClick = onClose) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Fechar",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
 
-            // Botões de Ação
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = viewModel::testConnection,
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Card com as 4 Etapas
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                DiagnosticStepRow(
+                    title = "1. Alcance do Host (IP/DNS)",
+                    status = uiState.diagnosticResults[DiagnosticStepResult.Step.HOST_REACHABILITY] ?: StepStatus.Pending
+                )
+                DiagnosticStepRow(
+                    title = "2. Porta Aberta (${uiState.port})",
+                    status = uiState.diagnosticResults[DiagnosticStepResult.Step.PORT_OPEN] ?: StepStatus.Pending
+                )
+                DiagnosticStepRow(
+                    title = "3. Autenticação",
+                    status = uiState.diagnosticResults[DiagnosticStepResult.Step.AUTHENTICATION] ?: StepStatus.Pending
+                )
+                DiagnosticStepRow(
+                    title = "4. Acesso ao Diretório Raiz",
+                    status = uiState.diagnosticResults[DiagnosticStepResult.Step.ROOT_ACCESS] ?: StepStatus.Pending
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Status Geral / Resumo
+        when {
+            uiState.isTestingConnection -> {
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    enabled = !uiState.isTestingConnection
+                        .fillMaxWidth()
+                        .background(
+                            color = SonarCyanPrimary.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.NetworkCheck, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Testar")
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = SonarCyanPrimary
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Validando etapas de conexão...",
+                        fontSize = 12.sp,
+                        color = SonarCyanPrimary,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
+            }
+            allPassed -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = StatusSuccess.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = StatusSuccess,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Sucesso! Servidor pronto para conexão.",
+                        fontSize = 12.sp,
+                        color = StatusSuccess,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+            anyFailed -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = StatusError.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Error,
+                        contentDescription = null,
+                        tint = StatusError,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Falha na conexão. Siga as orientações acima.",
+                        fontSize = 12.sp,
+                        color = StatusError,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
 
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Botões no Rodapé do Modal
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onRetest,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                enabled = !uiState.isTestingConnection
+            ) {
+                Icon(Icons.Filled.NetworkCheck, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Repetir Teste")
+            }
+
+            if (allPassed) {
                 Button(
-                    onClick = viewModel::saveServer,
+                    onClick = onSaveAndClose,
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp),
@@ -375,17 +594,25 @@ fun ServerFormScreen(
                     ),
                     enabled = !uiState.isSaving
                 ) {
-                    if (uiState.isSaving) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.Black)
-                    } else {
-                        Icon(Icons.Filled.Save, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Salvar", fontWeight = FontWeight.Bold)
-                    }
+                    Icon(Icons.Filled.Save, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Salvar", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = onClose,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Text("Fechar")
                 }
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
