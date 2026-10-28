@@ -185,12 +185,12 @@ jobs:
             PR_NUM="$EXISTING_PR"
           fi
 
-          # Tenta realizar o merge do PR via gh CLI
+          # Tenta realizar o merge do PR via gh CLI com exclusão automática da branch remota (--delete-branch)
           MERGED=false
           if [ -n "$PR_NUM" ]; then
             echo "🔀 Tentando mesclar o Pull Request #$PR_NUM via GitHub CLI..."
-            if gh pr merge "$PR_NUM" --merge --subject "chore(release): merge $SOURCE_BRANCH into main ($VERSION)" 2>/dev/null; then
-              echo "🎉 Pull Request #$PR_NUM mesclado com sucesso na branch 'main'!"
+            if gh pr merge "$PR_NUM" --merge --delete-branch --subject "chore(release): merge $SOURCE_BRANCH into main ($VERSION)" 2>/dev/null; then
+              echo "🎉 Pull Request #$PR_NUM mesclado e branch remota excluída com sucesso na branch 'main'!"
               MERGED=true
             else
               echo "⚠️ gh pr merge encontrou restrição de política. Executando fallback via Git direto..."
@@ -207,3 +207,7 @@ jobs:
             git push origin main
             echo "🎉 Branch 'main' sincronizada e enviada para o repositório com sucesso!"
           fi
+
+          # Garante a exclusão da branch remota no GitHub caso ainda exista
+          echo "🗑️ Garantindo exclusão da branch remota '$SOURCE_BRANCH' no GitHub..."
+          git push origin --delete "$SOURCE_BRANCH" 2>/dev/null || true
