@@ -24,6 +24,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
@@ -95,6 +108,45 @@ fun ExplorerScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showMenu by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Launcher para escolher arquivos locais e enviar para o servidor
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.uploadFilesFromUris(uris, context.contentResolver)
+        }
+    }
+
+    // Observa evento de abertura de arquivo
+    LaunchedEffect(Unit) {
+        viewModel.openFileEvent.collect { event ->
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                event.file
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, event.mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(Intent.createChooser(intent, "Abrir com..."))
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(context, "Nenhum aplicativo encontrado para abrir este arquivo", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Exibe mensagens informativas em Snackbar
+    LaunchedEffect(uiState.infoMessage) {
+        uiState.infoMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearInfoMessage()
+        }
+    }
 
     // Inicializa a sessão autenticada com o servidor
     LaunchedEffect(serverId) {
@@ -167,6 +219,14 @@ fun ExplorerScreen(
                             imageVector = if (uiState.isSearchActive) Icons.Filled.Close else Icons.Filled.Search,
                             contentDescription = "Buscar",
                             tint = if (uiState.isSearchActive) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    IconButton(onClick = { filePickerLauncher.launch(arrayOf("*/*")) }) {
+                        Icon(
+                            imageVector = Icons.Filled.UploadFile,
+                            contentDescription = "Enviar do Telefone",
+                            tint = SonarCyanPrimary
                         )
                     }
 
@@ -248,13 +308,27 @@ fun ExplorerScreen(
                 )
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.openCreateFolderDialog(true) },
-                containerColor = SonarCyanPrimary,
-                contentColor = Color.Black
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Icon(Icons.Filled.CreateNewFolder, contentDescription = "Nova Pasta")
+                SmallFloatingActionButton(
+                    onClick = { viewModel.openCreateFolderDialog(true) },
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ) {
+                    Icon(Icons.Filled.CreateNewFolder, contentDescription = "Nova Pasta")
+                }
+
+                ExtendedFloatingActionButton(
+                    onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                    containerColor = SonarCyanPrimary,
+                    contentColor = Color.Black,
+                    icon = { Icon(Icons.Filled.UploadFile, contentDescription = null) },
+                    text = { Text("Enviar", fontWeight = FontWeight.Bold) }
+                )
             }
         }
     ) { innerPadding ->
@@ -353,6 +427,8 @@ fun ExplorerScreen(
                                     onClick = {
                                         if (file.isDirectory) {
                                             viewModel.navigateTo(file.fullPath)
+                                        } else {
+                                            viewModel.openFile(file)
                                         }
                                     },
                                     onOptionsClick = {
@@ -375,6 +451,8 @@ fun ExplorerScreen(
                                     onClick = {
                                         if (file.isDirectory) {
                                             viewModel.navigateTo(file.fullPath)
+                                        } else {
+                                            viewModel.openFile(file)
                                         }
                                     },
                                     onOptionsClick = {
@@ -398,6 +476,13 @@ fun ExplorerScreen(
         ) {
             FileActionBottomSheetContent(
                 file = file,
+                onOpen = {
+                    viewModel.selectFileForAction(null)
+                    viewModel.openFile(file)
+                },
+                onDownload = {
+                    viewModel.downloadFileToPhone(file)
+                },
                 onRename = {
                     viewModel.openRenameDialog(true)
                 },
@@ -406,6 +491,26 @@ fun ExplorerScreen(
                 }
             )
         }
+    }
+
+    // Diálogo de Carregando ao Abrir Arquivo
+    if (uiState.isOpeningFile) {
+        AlertDialog(
+            onDismissRequest = {},
+            confirmButton = {},
+            title = { Text("Abrindo Arquivo", fontWeight = FontWeight.Bold) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = SonarCyanPrimary,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text("Carregando ${uiState.openingFileName ?: "arquivo"}...")
+                }
+            }
+        )
     }
 
     // Diálogos de Ação
@@ -437,6 +542,8 @@ fun ExplorerScreen(
 @Composable
 fun FileActionBottomSheetContent(
     file: RemoteFile,
+    onOpen: () -> Unit,
+    onDownload: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -484,6 +591,30 @@ fun FileActionBottomSheetContent(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ) {
             Column {
+                if (!file.isDirectory) {
+                    TextButton(
+                        onClick = onOpen,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.OpenInNew, contentDescription = null, tint = SonarCyanPrimary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Abrir Arquivo", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    TextButton(
+                        onClick = onDownload,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Download, contentDescription = null, tint = SonarCyanPrimary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Baixar para o Telefone", color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+
                 TextButton(
                     onClick = onRename,
                     modifier = Modifier.fillMaxWidth()
