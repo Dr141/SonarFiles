@@ -7,6 +7,7 @@ import com.sonarfiles.app.core.common.ConnectionErrorFormatter
 import com.sonarfiles.app.core.network.NetworkConnectivityObserver
 import com.sonarfiles.app.domain.model.AuthCredentials
 import com.sonarfiles.app.domain.model.DiagnosticStepResult
+import com.sonarfiles.app.domain.model.ProtocolType
 import com.sonarfiles.app.domain.model.RemoteFile
 import com.sonarfiles.app.domain.model.ServerConfig
 import com.sonarfiles.app.domain.repository.RemoteConnectionFactory
@@ -222,6 +223,19 @@ class ExplorerViewModel @Inject constructor(
     fun createFolder(folderName: String) {
         val fs = activeFileSystem ?: return
         val current = _uiState.value.currentPath
+        val isSmb = _uiState.value.serverConfig?.protocol == ProtocolType.SMB
+        val isRoot = current.trim().trim('/') == ""
+
+        if (isSmb && isRoot) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = "Não é possível criar pastas na raiz do servidor SMB. Acesse uma das pastas compartilhadas (ex: /testes) para criar novas subpastas."
+                )
+            }
+            openCreateFolderDialog(false)
+            return
+        }
+
         val newFolderPath = if (current.endsWith("/")) "$current$folderName" else "$current/$folderName"
 
         viewModelScope.launch {

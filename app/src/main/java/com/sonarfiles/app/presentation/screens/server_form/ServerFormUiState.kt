@@ -16,7 +16,7 @@ data class ServerFormUiState(
     val hostOrIp: String = "",
     val port: String = ProtocolType.SMB.defaultPort.toString(),
     val protocol: ProtocolType = ProtocolType.SMB,
-    val defaultShareOrPath: String = "/",
+    val defaultShareOrPath: String = "",
     val username: String = "",
     val password: String = "",
     val domainOrWorkgroup: String = "",

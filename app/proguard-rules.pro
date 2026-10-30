@@ -39,3 +39,8 @@
 
 # Logging (SLF4J)
 -dontwarn org.slf4j.**
+
+# Rapid7 DCERPC & Guava
+-dontwarn com.rapid7.**
+-keep class com.rapid7.** { *; }
+-dontwarn com.google.common.**

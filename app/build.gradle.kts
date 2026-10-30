@@ -16,8 +16,8 @@ android {
         applicationId = "com.sonarfiles.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.1.7"
+        versionCode = 10
+        versionName = "1.1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -123,6 +123,12 @@ dependencies {
 
     // Network Protocols (SMBJ & SSHJ)
     implementation(libs.hierynomus.smbj)
+    implementation(libs.rapid7.dcerpc) {
+        exclude(group = "org.bouncycastle")
+        exclude(group = "com.hierynomus", module = "smbj")
+        exclude(group = "com.google.guava", module = "guava")
+    }
+    implementation(libs.google.guava)
     implementation(libs.hierynomus.sshj) {
         exclude(group = "org.bouncycastle")
     }

@@ -335,8 +335,17 @@ fun ServerFormScreen(
             OutlinedTextField(
                 value = uiState.defaultShareOrPath,
                 onValueChange = viewModel::onDefaultPathChanged,
-                label = { Text(if (uiState.protocol == ProtocolType.SMB) "Compartilhamento Inicial" else "Diretório Inicial") },
-                placeholder = { Text(if (uiState.protocol == ProtocolType.SMB) "Ex: Users ou C$" else "/home/user") },
+                label = { Text(if (uiState.protocol == ProtocolType.SMB) "Compartilhamento Inicial (Opcional)" else "Diretório Inicial") },
+                placeholder = { Text(if (uiState.protocol == ProtocolType.SMB) "Ex: testes (vazio = listar todos)" else "/home/user") },
+                supportingText = {
+                    Text(
+                        if (uiState.protocol == ProtocolType.SMB) {
+                            "Deixe em branco para listar todos os compartilhamentos (ex: testes, Users)"
+                        } else {
+                            "Caminho absoluto no servidor Linux"
+                        }
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 colors = outlinedColors()

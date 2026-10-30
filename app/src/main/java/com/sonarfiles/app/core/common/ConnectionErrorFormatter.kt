@@ -210,10 +210,23 @@ object ConnectionErrorFormatter {
             // STATUS_BAD_NETWORK_NAME (0xc00000cc)
             trace.contains("STATUS_BAD_NETWORK_NAME", ignoreCase = true) ||
             trace.contains("0xc00000cc", ignoreCase = true) -> {
+                val shareMention = if (targetPath.isNotBlank()) "'$targetPath'" else "especificado"
                 FormattedDiagnosticError(
-                    reason = "Compartilhamento '$targetPath' não encontrado no servidor.",
-                    hint = "Verifique o nome exato da pasta compartilhada no Windows (ex: 'testes' ou 'Users') e insira no campo Diretório Raiz.",
+                    reason = "Compartilhamento $shareMention não encontrado no servidor.",
+                    hint = "Verifique o nome exato da pasta compartilhada no Windows (ex: 'testes' ou 'Users') e insira no campo Compartilhamento Inicial.",
                     errorCode = "STATUS_BAD_NETWORK_NAME"
+                )
+            }
+
+            // DiskShare closed / Null pointer / Share name vazio
+            trace.contains("DiskShare has already been closed", ignoreCase = true) ||
+            trace.contains("NullPointerException", ignoreCase = true) ||
+            trace.contains("null object reference", ignoreCase = true) ||
+            trace.contains("Nenhum compartilhamento especificado", ignoreCase = true) -> {
+                FormattedDiagnosticError(
+                    reason = "Nenhum compartilhamento válido foi especificado para conexão.",
+                    hint = "No Windows, informe o nome da pasta compartilhada (ex: 'testes' ou 'Users') no campo 'Compartilhamento Inicial'.",
+                    errorCode = "NO_VALID_SHARE"
                 )
             }
 

@@ -41,7 +41,7 @@ class ServerFormViewModel @Inject constructor(
         it.copy(
             protocol = value,
             port = value.defaultPort.toString(),
-            defaultShareOrPath = if (value == ProtocolType.SMB) "/" else "/home"
+            defaultShareOrPath = if (value == ProtocolType.SMB) "" else "/home"
         )
     }
     fun onDefaultPathChanged(value: String) = _uiState.update { it.copy(defaultShareOrPath = value) }
@@ -119,7 +119,7 @@ class ServerFormViewModel @Inject constructor(
             hostOrIp = state.hostOrIp.trim(),
             port = portNumber,
             protocol = state.protocol,
-            defaultShareOrPath = state.defaultShareOrPath.ifBlank { "/" },
+            defaultShareOrPath = if (state.protocol == ProtocolType.SMB) state.defaultShareOrPath.trim() else state.defaultShareOrPath.ifBlank { "/home" },
             domainOrWorkgroup = state.domainOrWorkgroup.ifBlank { null },
             macAddress = state.macAddress.ifBlank { null },
             requiresBiometrics = state.requiresBiometrics
@@ -195,7 +195,7 @@ class ServerFormViewModel @Inject constructor(
                     hostOrIp = state.hostOrIp.trim(),
                     port = portNumber,
                     protocol = state.protocol,
-                    defaultShareOrPath = state.defaultShareOrPath.ifBlank { "/" },
+                    defaultShareOrPath = if (state.protocol == ProtocolType.SMB) state.defaultShareOrPath.trim() else state.defaultShareOrPath.ifBlank { "/home" },
                     domainOrWorkgroup = state.domainOrWorkgroup.ifBlank { null },
                     macAddress = state.macAddress.ifBlank { null },
                     requiresBiometrics = state.requiresBiometrics

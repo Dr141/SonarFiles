@@ -109,7 +109,8 @@ class TestConnectionDiagnosticUseCase @Inject constructor(
         // Passo 4: Acesso ao Diretório Raiz / Compartilhamento
         emit(DiagnosticStepResult.InProgress(DiagnosticStepResult.Step.ROOT_ACCESS))
         val step4Start = System.currentTimeMillis()
-        val listResult = connection.listDirectory(serverConfig.defaultShareOrPath)
+        val pathOrShare = serverConfig.defaultShareOrPath
+        val listResult = connection.listDirectory(pathOrShare)
         val step4Latency = System.currentTimeMillis() - step4Start
 
         if (listResult.isFailure) {
@@ -119,7 +120,7 @@ class TestConnectionDiagnosticUseCase @Inject constructor(
                 throwable = err,
                 username = username,
                 host = host,
-                pathOrShare = serverConfig.defaultShareOrPath
+                pathOrShare = pathOrShare
             )
             emit(
                 DiagnosticStepResult.StepFailed(
@@ -130,12 +131,18 @@ class TestConnectionDiagnosticUseCase @Inject constructor(
                 )
             )
         } else {
-            val itemsCount = listResult.getOrNull()?.size ?: 0
+            val items = listResult.getOrNull().orEmpty()
+            val isSmbRoot = (pathOrShare.trim().trim('/') == "") && (serverConfig.protocol == com.sonarfiles.app.domain.model.ProtocolType.SMB)
+            val details = if (isSmbRoot) {
+                "${items.size} compartilhamento(s) encontrado(s): ${items.joinToString { it.name }}"
+            } else {
+                "${items.size} itens encontrados no caminho"
+            }
             emit(
                 DiagnosticStepResult.StepPassed(
                     DiagnosticStepResult.Step.ROOT_ACCESS,
                     latencyMs = step4Latency,
-                    details = "$itemsCount itens encontrados no caminho"
+                    details = details
                 )
             )
         }
