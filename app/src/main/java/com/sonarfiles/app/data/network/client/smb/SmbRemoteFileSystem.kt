@@ -11,6 +11,8 @@ import com.hierynomus.smbj.auth.AuthenticationContext
 import com.hierynomus.smbj.connection.Connection
 import com.hierynomus.smbj.session.Session
 import com.hierynomus.smbj.share.DiskShare
+import com.rapid7.client.dcerpc.mssrvs.ServerService
+import com.rapid7.client.dcerpc.transport.SMBTransportFactories
 import com.sonarfiles.app.core.common.DispatchersProvider
 import com.sonarfiles.app.domain.model.AuthCredentials
 import com.sonarfiles.app.domain.model.RemoteFile
@@ -77,6 +79,15 @@ class SmbRemoteFileSystem(
 
     override suspend fun listDirectory(remotePath: String): Result<List<RemoteFile>> = withContext(dispatchers.io) {
         runCatching {
+            val shareName = resolveShareName(remotePath).ifBlank {
+                if (remotePath.trim().trim('/') == "") "" else currentShareName
+            }
+
+            // Se o shareName for vazio, estamos na raiz do servidor SMB: listar todos os compartilhamentos
+            if (shareName.isBlank()) {
+                return@runCatching listShares()
+            }
+
             val share = ensureShareConnected(remotePath)
             val relativePath = extractRelativePath(remotePath)
 
@@ -85,7 +96,7 @@ class SmbRemoteFileSystem(
                 .map { info ->
                     val isDir = (info.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
                     val isHidden = (info.fileAttributes and FileAttributes.FILE_ATTRIBUTE_HIDDEN.value) != 0L
-                    val childPath = if (relativePath.isBlank()) info.fileName else "$relativePath/${info.fileName}"
+                    val childPath = if (relativePath.isBlank()) info.fileName else "$relativePath/${info.fileName}".replace('\\', '/')
 
                     RemoteFile(
                         name = info.fileName,
@@ -99,15 +110,75 @@ class SmbRemoteFileSystem(
         }
     }
 
+    private fun listShares(): List<RemoteFile> {
+        val sess = session ?: throw IllegalStateException("Sessão SMB não autenticada")
+
+        // 1. Tentar listar via MS-SRVS RPC (Server Service sobre o pipe \srvsvc no IPC$)
+        val rpcShares = try {
+            val transport = SMBTransportFactories.SRVSVC.getTransport(sess)
+            val serverService = ServerService(transport)
+            serverService.getShares0().map { it.netName }
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        if (rpcShares.isNotEmpty()) {
+            return rpcShares.map { name ->
+                RemoteFile(
+                    name = name,
+                    fullPath = "/$name",
+                    isDirectory = true,
+                    sizeBytes = 0L,
+                    lastModifiedEpochMillis = 0L,
+                    isHidden = name.endsWith("$")
+                )
+            }
+        }
+
+        // 2. Se a listagem RPC falhar (ex: restrição de segurança no servidor), mas houver um compartilhamento padrão configurado:
+        val configuredShare = resolveShareName(serverConfig.defaultShareOrPath)
+        if (configuredShare.isNotBlank()) {
+            return listOf(
+                RemoteFile(
+                    name = configuredShare,
+                    fullPath = "/$configuredShare",
+                    isDirectory = true,
+                    sizeBytes = 0L,
+                    lastModifiedEpochMillis = 0L,
+                    isHidden = configuredShare.endsWith("$")
+                )
+            )
+        }
+
+        // 3. Se não há RPC nem compartilhamento configurado:
+        throw IllegalStateException(
+            "Nenhum compartilhamento especificado e o servidor não permitiu listar compartilhamentos automaticamente. " +
+            "Por favor, informe o nome da pasta compartilhada (ex: 'testes') no campo 'Compartilhamento Inicial' do servidor."
+        )
+    }
+
     override suspend fun stat(remotePath: String): Result<RemoteFile> = withContext(dispatchers.io) {
         runCatching {
-            val share = ensureShareConnected(remotePath)
+            val shareName = resolveShareName(remotePath)
             val relativePath = extractRelativePath(remotePath)
+
+            if (shareName.isBlank() || relativePath.isBlank()) {
+                val name = shareName.ifBlank { "Raiz" }
+                return@runCatching RemoteFile(
+                    name = name,
+                    fullPath = if (shareName.isBlank()) "/" else "/$shareName",
+                    isDirectory = true,
+                    sizeBytes = 0L,
+                    lastModifiedEpochMillis = 0L
+                )
+            }
+
+            val share = ensureShareConnected(remotePath)
             val info = share.getFileInformation(relativePath)
             val isDir = (info.standardInformation.isDirectory)
 
             RemoteFile(
-                name = relativePath.substringAfterLast('/'),
+                name = relativePath.substringAfterLast('\\').substringAfterLast('/'),
                 fullPath = remotePath,
                 isDirectory = isDir,
                 sizeBytes = if (isDir) 0L else info.standardInformation.endOfFile,
@@ -118,8 +189,15 @@ class SmbRemoteFileSystem(
 
     override suspend fun createDirectory(remotePath: String, recursive: Boolean): Result<Unit> = withContext(dispatchers.io) {
         runCatching {
-            val share = ensureShareConnected(remotePath)
+            val shareName = resolveShareName(remotePath)
+            if (shareName.isBlank()) {
+                throw IllegalArgumentException("Não é possível criar pastas na raiz do servidor SMB. Acesse uma das pastas compartilhadas (ex: /testes) para criar novas subpastas.")
+            }
             val relativePath = extractRelativePath(remotePath)
+            if (relativePath.isBlank()) {
+                throw IllegalArgumentException("Não é possível criar um compartilhamento de rede pelo aplicativo. Crie o compartilhamento no Windows.")
+            }
+            val share = ensureShareConnected(remotePath)
             share.mkdir(relativePath)
         }
     }
@@ -309,11 +387,16 @@ class SmbRemoteFileSystem(
 
     private fun ensureShareConnected(path: String): DiskShare {
         val targetShare = resolveShareName(path).ifBlank { currentShareName }
+        if (targetShare.isBlank()) {
+            throw IllegalArgumentException("Nenhum compartilhamento especificado para a conexão")
+        }
         if (activeShare == null || currentShareName != targetShare) {
             val sess = session ?: throw IllegalStateException("Sessão SMB não autenticada")
-            activeShare?.close()
+            try {
+                activeShare?.close()
+            } catch (_: Exception) {}
             activeShare = sess.connectShare(targetShare) as? DiskShare
-                ?: throw IllegalArgumentException("Compartilhamento '$targetShare' não encontrado")
+                ?: throw IllegalArgumentException("Compartilhamento '$targetShare' não encontrado ou não é uma pasta de disco")
             currentShareName = targetShare
         }
         return activeShare!!
