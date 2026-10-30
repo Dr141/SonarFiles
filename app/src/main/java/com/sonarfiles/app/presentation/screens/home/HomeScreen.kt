@@ -7,7 +7,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,29 +20,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FolderShared
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Radar
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -73,12 +66,10 @@ import com.sonarfiles.app.R
 import com.sonarfiles.app.core.ui.components.WifiRequiredDialog
 import com.sonarfiles.app.core.ui.components.WifiWarningBanner
 import com.sonarfiles.app.core.ui.theme.SonarCyanPrimary
-import com.sonarfiles.app.core.ui.theme.StatusError
-import com.sonarfiles.app.core.ui.theme.StatusSftpBadge
-import com.sonarfiles.app.core.ui.theme.StatusSmbBadge
-import com.sonarfiles.app.domain.model.ProtocolType
 import com.sonarfiles.app.domain.model.ServerConfig
 import com.sonarfiles.app.presentation.screens.home.components.ConfirmDeleteServerDialog
+import com.sonarfiles.app.presentation.screens.home.components.ServerCardGrid
+import com.sonarfiles.app.presentation.screens.home.components.ServerCardList
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,6 +115,14 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    // Alternador Lista / Grade
+                    IconButton(onClick = viewModel::toggleGridView) {
+                        Icon(
+                            imageVector = if (uiState.isGridView) Icons.Filled.ViewList else Icons.Filled.GridView,
+                            contentDescription = if (uiState.isGridView) "Ver em Lista" else "Ver em Grade",
+                            tint = if (uiState.isGridView) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     IconButton(onClick = onNavigateToManualAdd) {
                         Icon(
                             imageVector = Icons.Filled.Add,
@@ -203,38 +202,70 @@ fun HomeScreen(
                         )
                     }
 
-                    else -> {
-                        LazyColumn(
+                    uiState.isGridView -> {
+                        // Visualização em Grade (Grid 2 colunas)
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.servers_title),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "${uiState.servers.size} configurado(s)",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                    )
-                                }
+                            item(span = { GridItemSpan(2) }) {
+                                ServersHeader(
+                                    count = uiState.servers.size,
+                                    isGridView = true,
+                                    onToggleView = viewModel::toggleGridView
+                                )
                             }
 
                             items(
                                 items = uiState.servers,
                                 key = { it.id }
                             ) { server ->
-                                ServerCard(
+                                ServerCardGrid(
+                                    server = server,
+                                    onClick = {
+                                        if (viewModel.isWifiConnected()) {
+                                            onNavigateToExplorer(server.id)
+                                        } else {
+                                            wifiWarningDialogMessage = "Para conectar ao servidor \"${server.displayName}\" (${server.hostOrIp}), conecte o aparelho à rede Wi-Fi local."
+                                        }
+                                    },
+                                    onEdit = { onNavigateToEditServer(server.id) },
+                                    onDelete = { serverToDelete = server },
+                                    onToggleFavorite = { viewModel.toggleFavorite(server) },
+                                    onWakeOnLan = {
+                                        if (!server.macAddress.isNullOrBlank()) {
+                                            onSendWakeOnLan(server.macAddress)
+                                            Toast.makeText(context, "Pacote Wake-on-LAN enviado para ${server.displayName}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    else -> {
+                        // Visualização em Lista (Cards horizontais)
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            item {
+                                ServersHeader(
+                                    count = uiState.servers.size,
+                                    isGridView = false,
+                                    onToggleView = viewModel::toggleGridView
+                                )
+                            }
+
+                            items(
+                                items = uiState.servers,
+                                key = { it.id }
+                            ) { server ->
+                                ServerCardList(
                                     server = server,
                                     onClick = {
                                         if (viewModel.isWifiConnected()) {
@@ -284,179 +315,56 @@ fun HomeScreen(
 }
 
 @Composable
-fun ServerCard(
-    server: ServerConfig,
-    onClick: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onWakeOnLan: () -> Unit,
-    modifier: Modifier = Modifier
+private fun ServersHeader(
+    count: Int,
+    isGridView: Boolean,
+    onToggleView: () -> Unit
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = modifier
+    Row(
+        modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        shape = RoundedCornerShape(16.dp)
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Protocol Icon Avatar
+        Text(
+            text = stringResource(R.string.servers_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "$count configurado(s)",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
             Surface(
-                modifier = Modifier.size(48.dp),
-                shape = CircleShape,
-                color = when (server.protocol) {
-                    ProtocolType.SMB -> StatusSmbBadge.copy(alpha = 0.15f)
-                    ProtocolType.SFTP -> StatusSftpBadge.copy(alpha = 0.15f)
-                }
+                onClick = onToggleView,
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = if (server.protocol == ProtocolType.SMB) Icons.Filled.FolderShared else Icons.Filled.Dns,
-                        contentDescription = null,
-                        tint = if (server.protocol == ProtocolType.SMB) StatusSmbBadge else StatusSftpBadge,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            // Details
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = server.displayName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    ProtocolBadge(protocol = server.protocol)
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "${server.hostOrIp}:${server.port}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                if (!server.macAddress.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "MAC: ${server.macAddress}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                }
-            }
-
-            // Favorite Button
-            IconButton(onClick = onToggleFavorite) {
-                Icon(
-                    imageVector = if (server.isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                    contentDescription = "Favorito",
-                    tint = if (server.isFavorite) Color(0xFFFFD600) else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            // Overflow Actions Menu (Edit, WoL, Delete)
-            Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(
-                        imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "Mais opções",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                    modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("Editar Configuração") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Edit,
-                                contentDescription = null,
-                                tint = SonarCyanPrimary
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onEdit()
-                        }
+                    Icon(
+                        imageVector = if (isGridView) Icons.Filled.ViewList else Icons.Filled.GridView,
+                        contentDescription = if (isGridView) "Lista" else "Grade",
+                        tint = SonarCyanPrimary,
+                        modifier = Modifier.size(16.dp)
                     )
-
-                    if (!server.macAddress.isNullOrBlank()) {
-                        DropdownMenuItem(
-                            text = { Text("Wake-on-LAN") },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Filled.PowerSettingsNew,
-                                    contentDescription = null,
-                                    tint = SonarCyanPrimary
-                                )
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                onWakeOnLan()
-                            }
-                        )
-                    }
-
-                    DropdownMenuItem(
-                        text = { Text("Excluir Configuração", color = StatusError) },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Delete,
-                                contentDescription = null,
-                                tint = StatusError
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onDelete()
-                        }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (isGridView) "Lista" else "Grade",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-fun ProtocolBadge(protocol: ProtocolType) {
-    val badgeColor = when (protocol) {
-        ProtocolType.SMB -> StatusSmbBadge
-        ProtocolType.SFTP -> StatusSftpBadge
-    }
-
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = badgeColor.copy(alpha = 0.2f)
-    ) {
-        Text(
-            text = protocol.name,
-            color = badgeColor,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        )
     }
 }
 
