@@ -23,7 +23,11 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
+import com.sonarfiles.app.domain.model.TransferStatus
+import com.sonarfiles.app.domain.model.TransferTask
 import com.sonarfiles.app.domain.model.TransferType
+import com.sonarfiles.app.domain.repository.TransferRepository
+import kotlinx.coroutines.flow.collectLatest
 import com.sonarfiles.app.domain.usecase.transfer.EnqueueTransferUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +58,7 @@ class ExplorerViewModel @Inject constructor(
     private val listDirectoryUseCase: ListDirectoryUseCase,
     private val manageRemoteFileUseCase: ManageRemoteFileUseCase,
     private val enqueueTransferUseCase: EnqueueTransferUseCase,
+    private val transferRepository: TransferRepository,
     private val connectivityObserver: NetworkConnectivityObserver
 ) : ViewModel() {
 
@@ -65,6 +70,40 @@ class ExplorerViewModel @Inject constructor(
 
     private var activeFileSystem: RemoteFileSystem? = null
     private val pathStack = ArrayDeque<String>()
+    private val knownCompletedUploadIds = mutableSetOf<Long>()
+    private var transferObserverStarted = false
+
+    private fun startObservingTransfers(serverId: Long) {
+        if (transferObserverStarted) return
+        transferObserverStarted = true
+
+        viewModelScope.launch {
+            var isFirstEmission = true
+            transferRepository.getAllTransfers().collectLatest { transfers ->
+                val active = transfers.filter { it.serverId == serverId && !it.isFinished }
+                _uiState.update { it.copy(activeTransfers = active) }
+
+                val completedUploads = transfers.filter {
+                    it.serverId == serverId &&
+                    it.type == TransferType.UPLOAD &&
+                    it.status == TransferStatus.COMPLETED
+                }
+
+                if (isFirstEmission) {
+                    completedUploads.forEach { knownCompletedUploadIds.add(it.id) }
+                    isFirstEmission = false
+                } else {
+                    val newlyCompleted = completedUploads.filter { it.id !in knownCompletedUploadIds }
+                    if (newlyCompleted.isNotEmpty()) {
+                        newlyCompleted.forEach { knownCompletedUploadIds.add(it.id) }
+                        refresh()
+                        val names = newlyCompleted.joinToString { it.fileName }
+                        _uiState.update { it.copy(infoMessage = "Upload concluído: $names") }
+                    }
+                }
+            }
+        }
+    }
 
     fun initSession(activity: FragmentActivity, serverId: Long, initialPath: String) {
         if (activeFileSystem != null && _uiState.value.serverConfig?.id == serverId) {
@@ -129,6 +168,7 @@ class ExplorerViewModel @Inject constructor(
 
             activeFileSystem = connResult.getOrThrow()
             serverRepository.updateLastConnected(server.id, System.currentTimeMillis())
+            startObservingTransfers(server.id)
 
             val targetPath = if (initialPath.isNotBlank()) initialPath else server.defaultShareOrPath
             _uiState.update {
@@ -380,6 +420,37 @@ class ExplorerViewModel @Inject constructor(
         }
     }
 
+    fun downloadFileToUri(file: RemoteFile, destinationUriStr: String) {
+        val server = _uiState.value.serverConfig ?: return
+
+        viewModelScope.launch {
+            selectFileForAction(null)
+            enqueueTransferUseCase(
+                serverId = server.id,
+                serverDisplayName = server.displayName,
+                remotePath = file.fullPath,
+                localPath = destinationUriStr,
+                fileName = file.name,
+                type = TransferType.DOWNLOAD,
+                totalBytes = file.sizeBytes
+            )
+            _uiState.update {
+                it.copy(infoMessage = "Download iniciado: ${file.name}")
+            }
+        }
+    }
+
+    fun cancelTransfer(task: TransferTask) {
+        viewModelScope.launch {
+            task.workRequestId?.let { reqId ->
+                try {
+                    androidx.work.WorkManager.getInstance(context).cancelWorkById(java.util.UUID.fromString(reqId))
+                } catch (e: Exception) {}
+            }
+            transferRepository.markCompleted(task.id, TransferStatus.CANCELLED, "Cancelado pelo usuário")
+        }
+    }
+
     fun uploadFilesFromUris(uris: List<Uri>, contentResolver: ContentResolver) {
         val server = _uiState.value.serverConfig ?: return
         val current = _uiState.value.currentPath
@@ -434,7 +505,7 @@ class ExplorerViewModel @Inject constructor(
                         totalBytes = if (fileSize > 0L) fileSize else stagingFile.length()
                     )
                     count++
-                } catch (_: Exception) {}
+                } catch (e: Exception) {}
             }
 
             if (count > 0) {

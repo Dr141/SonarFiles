@@ -2,12 +2,14 @@ package com.sonarfiles.app.presentation.screens.explorer
 
 import com.sonarfiles.app.domain.model.RemoteFile
 import com.sonarfiles.app.domain.model.ServerConfig
+import com.sonarfiles.app.domain.model.TransferTask
 import com.sonarfiles.app.domain.usecase.explorer.SortMode
 
 data class ExplorerUiState(
     val serverConfig: ServerConfig? = null,
     val currentPath: String = "/",
     val files: List<RemoteFile> = emptyList(),
+    val activeTransfers: List<TransferTask> = emptyList(),
     val isLoading: Boolean = true,
     val isAuthenticating: Boolean = false,
     val isGridView: Boolean = false,
