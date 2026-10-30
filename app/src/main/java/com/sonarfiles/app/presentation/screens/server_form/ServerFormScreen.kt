@@ -23,6 +23,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
@@ -92,6 +94,7 @@ fun ServerFormScreen(
     val scrollState = rememberScrollState()
     var passwordVisible by remember { mutableStateOf(false) }
     var showDiagnosticModal by remember { mutableStateOf(false) }
+    var showHelpGuide by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.savedSuccessfully) {
         if (uiState.savedSuccessfully) {
@@ -118,6 +121,15 @@ fun ServerFormScreen(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Voltar",
                             tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showHelpGuide = true }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                            contentDescription = "Ajuda e Configuração",
+                            tint = SonarCyanPrimary
                         )
                     }
                 },
@@ -231,6 +243,49 @@ fun ServerFormScreen(
                     onClick = { viewModel.onProtocolChanged(ProtocolType.SFTP) },
                     text = { Text("SFTP (Linux/SSH)", fontWeight = FontWeight.Bold) }
                 )
+            }
+
+            // Banner de Ajuda Rápida do Windows (para SMB)
+            if (uiState.protocol == ProtocolType.SMB) {
+                Surface(
+                    onClick = { showHelpGuide = true },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    border = BorderStroke(1.dp, SonarCyanPrimary.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                            contentDescription = null,
+                            tint = SonarCyanPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Como configurar o Windows?",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Toque para ver o passo a passo: rede privada, usuário local e permissões",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = SonarCyanPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
 
             // Nome de exibição
@@ -393,6 +448,9 @@ fun ServerFormScreen(
             DiagnosticBottomSheetContent(
                 uiState = uiState,
                 onRetest = viewModel::testConnection,
+                onOpenHelpGuide = {
+                    showHelpGuide = true
+                },
                 onSaveAndClose = {
                     showDiagnosticModal = false
                     viewModel.saveServer()
@@ -401,12 +459,18 @@ fun ServerFormScreen(
             )
         }
     }
+
+    // Modal do Guia de Configuração SMB (Windows)
+    if (showHelpGuide) {
+        WindowsSmbSetupGuideModal(onDismiss = { showHelpGuide = false })
+    }
 }
 
 @Composable
 fun DiagnosticBottomSheetContent(
     uiState: ServerFormUiState,
     onRetest: () -> Unit,
+    onOpenHelpGuide: () -> Unit,
     onSaveAndClose: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -556,6 +620,45 @@ fun DiagnosticBottomSheetContent(
                         fontSize = 12.sp,
                         color = StatusError,
                         fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Atalho para o Guia de Configuração do Windows
+        if (uiState.protocol == ProtocolType.SMB) {
+            Surface(
+                onClick = onOpenHelpGuide,
+                shape = RoundedCornerShape(10.dp),
+                color = SonarCyanPrimary.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, SonarCyanPrimary.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                        contentDescription = null,
+                        tint = SonarCyanPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Como configurar o Windows? Ver Passo a Passo",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SonarCyanPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = SonarCyanPrimary,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
