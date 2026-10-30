@@ -17,6 +17,21 @@ import com.sonarfiles.app.domain.usecase.connection.UnlockServerCredentialsUseCa
 import com.sonarfiles.app.domain.usecase.explorer.ListDirectoryUseCase
 import com.sonarfiles.app.domain.usecase.explorer.ManageRemoteFileUseCase
 import com.sonarfiles.app.domain.usecase.explorer.SortMode
+import android.content.ContentResolver
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
+import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
+import com.sonarfiles.app.domain.model.TransferType
+import com.sonarfiles.app.domain.usecase.transfer.EnqueueTransferUseCase
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import java.io.File
+import java.io.FileOutputStream
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,18 +40,28 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class OpenFileEvent(
+    val file: File,
+    val mimeType: String
+)
+
 @HiltViewModel
 class ExplorerViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val serverRepository: ServerRepository,
     private val connectionFactory: RemoteConnectionFactory,
     private val unlockServerCredentialsUseCase: UnlockServerCredentialsUseCase,
     private val listDirectoryUseCase: ListDirectoryUseCase,
     private val manageRemoteFileUseCase: ManageRemoteFileUseCase,
+    private val enqueueTransferUseCase: EnqueueTransferUseCase,
     private val connectivityObserver: NetworkConnectivityObserver
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ExplorerUiState())
     val uiState: StateFlow<ExplorerUiState> = _uiState.asStateFlow()
+
+    private val _openFileEvent = MutableSharedFlow<OpenFileEvent>()
+    val openFileEvent: SharedFlow<OpenFileEvent> = _openFileEvent.asSharedFlow()
 
     private var activeFileSystem: RemoteFileSystem? = null
     private val pathStack = ArrayDeque<String>()
@@ -290,6 +315,132 @@ class ExplorerViewModel @Inject constructor(
             } else {
                 val clean = ConnectionErrorFormatter.cleanTechnicalJargon(result.exceptionOrNull()?.localizedMessage.orEmpty())
                 _uiState.update { it.copy(errorMessage = "Erro ao excluir: $clean") }
+            }
+        }
+    }
+
+    fun clearInfoMessage() {
+        _uiState.update { it.copy(infoMessage = null) }
+    }
+
+    fun openFile(file: RemoteFile) {
+        if (file.isDirectory) return
+        val fs = activeFileSystem ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isOpeningFile = true, openingFileName = file.name) }
+            try {
+                val previewDir = File(context.cacheDir, "preview_cache")
+                previewDir.mkdirs()
+                val cachedFile = File(previewDir, file.name)
+
+                val stream = fs.openReadStream(file.fullPath).getOrThrow()
+                stream.use { input ->
+                    FileOutputStream(cachedFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                val ext = MimeTypeMap.getFileExtensionFromUrl(file.name).lowercase()
+                val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
+
+                _uiState.update { it.copy(isOpeningFile = false, openingFileName = null) }
+                _openFileEvent.emit(OpenFileEvent(cachedFile, mimeType))
+            } catch (e: Exception) {
+                val clean = ConnectionErrorFormatter.cleanTechnicalJargon(e.localizedMessage.orEmpty())
+                _uiState.update {
+                    it.copy(
+                        isOpeningFile = false,
+                        openingFileName = null,
+                        errorMessage = "Falha ao abrir o arquivo: $clean"
+                    )
+                }
+            }
+        }
+    }
+
+    fun downloadFileToPhone(file: RemoteFile) {
+        val server = _uiState.value.serverConfig ?: return
+        val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+        val destFile = File(downloadsDir, file.name)
+
+        viewModelScope.launch {
+            selectFileForAction(null)
+            enqueueTransferUseCase(
+                serverId = server.id,
+                serverDisplayName = server.displayName,
+                remotePath = file.fullPath,
+                localPath = destFile.absolutePath,
+                fileName = file.name,
+                type = TransferType.DOWNLOAD,
+                totalBytes = file.sizeBytes
+            )
+            _uiState.update {
+                it.copy(infoMessage = "Download iniciado: ${file.name}")
+            }
+        }
+    }
+
+    fun uploadFilesFromUris(uris: List<Uri>, contentResolver: ContentResolver) {
+        val server = _uiState.value.serverConfig ?: return
+        val current = _uiState.value.currentPath
+        val isSmb = server.protocol == ProtocolType.SMB
+        val isRoot = current.trim().trim('/') == ""
+
+        if (isSmb && isRoot) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = "Abra uma pasta compartilhada (ex: /testes) para enviar arquivos do telefone."
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            var count = 0
+            val stagingDir = File(context.cacheDir, "upload_staging")
+            stagingDir.mkdirs()
+
+            uris.forEach { uri ->
+                var fileName = "arquivo_${System.currentTimeMillis()}"
+                var fileSize = 0L
+
+                try {
+                    contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                            if (nameIdx != -1) fileName = cursor.getString(nameIdx)
+                            if (sizeIdx != -1) fileSize = cursor.getLong(sizeIdx)
+                        }
+                    }
+
+                    val stagingFile = File(stagingDir, fileName)
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(stagingFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+
+                    val cleanRemoteDir = if (current.endsWith("/")) current else "$current/"
+                    val remoteDest = "$cleanRemoteDir$fileName"
+
+                    enqueueTransferUseCase(
+                        serverId = server.id,
+                        serverDisplayName = server.displayName,
+                        remotePath = remoteDest,
+                        localPath = stagingFile.absolutePath,
+                        fileName = fileName,
+                        type = TransferType.UPLOAD,
+                        totalBytes = if (fileSize > 0L) fileSize else stagingFile.length()
+                    )
+                    count++
+                } catch (_: Exception) {}
+            }
+
+            if (count > 0) {
+                _uiState.update {
+                    it.copy(infoMessage = "$count arquivo(s) adicionado(s) à fila de envio!")
+                }
             }
         }
     }

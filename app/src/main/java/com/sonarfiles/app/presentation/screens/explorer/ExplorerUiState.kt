@@ -19,6 +19,9 @@ data class ExplorerUiState(
     val isCreateFolderDialogOpen: Boolean = false,
     val isRenameDialogOpen: Boolean = false,
     val isConfirmDeleteDialogOpen: Boolean = false,
+    val isOpeningFile: Boolean = false,
+    val openingFileName: String? = null,
+    val infoMessage: String? = null,
     val errorMessage: String? = null
 ) {
     val isEmpty: Boolean
