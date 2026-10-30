@@ -33,6 +33,14 @@ import androidx.core.content.FileProvider
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
+import com.sonarfiles.app.domain.model.TransferTask
+import com.sonarfiles.app.domain.model.TransferType
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
@@ -108,6 +116,17 @@ fun ExplorerScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showMenu by remember { mutableStateOf(false) }
+    var fileToSave by remember { mutableStateOf<RemoteFile?>(null) }
+
+    // Launcher do SAF para escolher onde salvar o arquivo no telefone
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("*/*")
+    ) { destinationUri ->
+        if (destinationUri != null && fileToSave != null) {
+            viewModel.downloadFileToUri(fileToSave!!, destinationUri.toString())
+            fileToSave = null
+        }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Launcher para escolher arquivos locais e enviar para o servidor
@@ -134,7 +153,7 @@ fun ExplorerScreen(
             }
             try {
                 context.startActivity(Intent.createChooser(intent, "Abrir com..."))
-            } catch (_: ActivityNotFoundException) {
+            } catch (e: ActivityNotFoundException) {
                 Toast.makeText(context, "Nenhum aplicativo encontrado para abrir este arquivo", Toast.LENGTH_SHORT).show()
             }
         }
@@ -344,6 +363,33 @@ fun ExplorerScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
 
+            // Card com Porcentagem em Tempo Real de Upload e Download
+            AnimatedVisibility(visible = uiState.activeTransfers.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = BorderStroke(1.dp, SonarCyanPrimary.copy(alpha = 0.35f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        uiState.activeTransfers.forEachIndexed { index, task ->
+                            if (index > 0) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+                            }
+                            ActiveTransferRow(
+                                task = task,
+                                onCancel = { viewModel.cancelTransfer(task) }
+                            )
+                        }
+                    }
+                }
+            }
+
             // Mensagem de Erro
             if (!uiState.errorMessage.isNullOrBlank()) {
                 Surface(
@@ -480,7 +526,12 @@ fun ExplorerScreen(
                     viewModel.selectFileForAction(null)
                     viewModel.openFile(file)
                 },
-                onDownload = {
+                onSaveAs = {
+                    fileToSave = file
+                    viewModel.selectFileForAction(null)
+                    createDocumentLauncher.launch(file.name)
+                },
+                onQuickDownload = {
                     viewModel.downloadFileToPhone(file)
                 },
                 onRename = {
@@ -543,7 +594,8 @@ fun ExplorerScreen(
 fun FileActionBottomSheetContent(
     file: RemoteFile,
     onOpen: () -> Unit,
-    onDownload: () -> Unit,
+    onSaveAs: () -> Unit,
+    onQuickDownload: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -604,13 +656,24 @@ fun FileActionBottomSheetContent(
                     }
 
                     TextButton(
-                        onClick = onDownload,
+                        onClick = onSaveAs,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = SonarCyanPrimary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Salvar no Telefone (Escolher pasta)...", color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+
+                    TextButton(
+                        onClick = onQuickDownload,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.Download, contentDescription = null, tint = SonarCyanPrimary)
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("Baixar para o Telefone", color = MaterialTheme.colorScheme.onSurface)
+                            Text("Download Rápido (Pasta Downloads)", color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }
@@ -749,4 +812,97 @@ fun ConfirmDeleteDialog(
             }
         }
     )
+}
+
+@Composable
+fun ActiveTransferRow(
+    task: TransferTask,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val percent = (task.progressFraction * 100).toInt()
+    val isUpload = task.type == TransferType.UPLOAD
+    val icon = if (isUpload) Icons.Filled.Upload else Icons.Filled.Download
+    val actionLabel = if (isUpload) "Enviando" else "Baixando"
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = SonarCyanPrimary,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = task.fileName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "$percent%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = SonarCyanPrimary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = { task.progressFraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = SonarCyanPrimary,
+                trackColor = MaterialTheme.colorScheme.background
+            )
+
+            Spacer(modifier = Modifier.height(3.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "$actionLabel • ${formatFileSize(task.transferredBytes)} de ${formatFileSize(task.totalBytes)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (task.speedBytesPerSec > 0) {
+                    Text(
+                        text = "${formatFileSize(task.speedBytesPerSec)}/s",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SonarCyanPrimary
+                    )
+                }
+            }
+        }
+
+        IconButton(
+            onClick = onCancel,
+            modifier = Modifier
+                .padding(start = 6.dp)
+                .size(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Cancelar",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
 }

@@ -1,6 +1,9 @@
 package com.sonarfiles.app.service.worker
 
 import android.app.NotificationChannel
+import android.net.Uri
+import java.io.InputStream
+import java.io.OutputStream
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -67,12 +70,21 @@ class FileTransferWorker @AssistedInject constructor(
             var lastNotificationTime = System.currentTimeMillis()
 
             if (transferType == TransferType.DOWNLOAD) {
-                val localFile = File(localPath)
-                localFile.parentFile?.mkdirs()
+                val outputStreamProvider: suspend () -> OutputStream = if (localPath.startsWith("content://")) {
+                    val uri = Uri.parse(localPath)
+                    {
+                        context.contentResolver.openOutputStream(uri, "wt")
+                            ?: throw java.io.IOException("Não foi possível gravar no destino selecionado: $uri")
+                    }
+                } else {
+                    val localFile = File(localPath)
+                    localFile.parentFile?.mkdirs()
+                    { FileOutputStream(localFile) }
+                }
 
                 connection.downloadFile(
                     remotePath = remotePath,
-                    localOutputStreamProvider = { FileOutputStream(localFile) },
+                    localOutputStreamProvider = outputStreamProvider,
                     totalBytes = totalBytes
                 ).collectLatest { progress ->
                     val now = System.currentTimeMillis()
@@ -89,11 +101,20 @@ class FileTransferWorker @AssistedInject constructor(
                     }
                 }
             } else {
-                val localFile = File(localPath)
-                if (!localFile.exists()) throw IllegalArgumentException("Arquivo local não encontrado")
+                val inputStreamProvider: suspend () -> InputStream = if (localPath.startsWith("content://")) {
+                    val uri = Uri.parse(localPath)
+                    {
+                        context.contentResolver.openInputStream(uri)
+                            ?: throw java.io.IOException("Não foi possível ler o arquivo selecionado: $uri")
+                    }
+                } else {
+                    val localFile = File(localPath)
+                    if (!localFile.exists()) throw IllegalArgumentException("Arquivo local não encontrado")
+                    { FileInputStream(localFile) }
+                }
 
                 connection.uploadFile(
-                    localInputStreamProvider = { FileInputStream(localFile) },
+                    localInputStreamProvider = inputStreamProvider,
                     remoteDestinationPath = remotePath,
                     totalBytes = totalBytes
                 ).collectLatest { progress ->
