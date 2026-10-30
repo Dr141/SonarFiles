@@ -70,16 +70,16 @@ class FileTransferWorker @AssistedInject constructor(
             var lastNotificationTime = System.currentTimeMillis()
 
             if (transferType == TransferType.DOWNLOAD) {
-                val outputStreamProvider: suspend () -> OutputStream = if (localPath.startsWith("content://")) {
-                    val uri = Uri.parse(localPath)
-                    {
+                val outputStreamProvider: suspend () -> OutputStream = {
+                    if (localPath.startsWith("content://")) {
+                        val uri = Uri.parse(localPath)
                         context.contentResolver.openOutputStream(uri, "wt")
                             ?: throw java.io.IOException("Não foi possível gravar no destino selecionado: $uri")
+                    } else {
+                        val localFile = File(localPath)
+                        localFile.parentFile?.mkdirs()
+                        FileOutputStream(localFile)
                     }
-                } else {
-                    val localFile = File(localPath)
-                    localFile.parentFile?.mkdirs()
-                    { FileOutputStream(localFile) }
                 }
 
                 connection.downloadFile(
@@ -101,16 +101,16 @@ class FileTransferWorker @AssistedInject constructor(
                     }
                 }
             } else {
-                val inputStreamProvider: suspend () -> InputStream = if (localPath.startsWith("content://")) {
-                    val uri = Uri.parse(localPath)
-                    {
+                val inputStreamProvider: suspend () -> InputStream = {
+                    if (localPath.startsWith("content://")) {
+                        val uri = Uri.parse(localPath)
                         context.contentResolver.openInputStream(uri)
                             ?: throw java.io.IOException("Não foi possível ler o arquivo selecionado: $uri")
+                    } else {
+                        val localFile = File(localPath)
+                        if (!localFile.exists()) throw IllegalArgumentException("Arquivo local não encontrado")
+                        FileInputStream(localFile)
                     }
-                } else {
-                    val localFile = File(localPath)
-                    if (!localFile.exists()) throw IllegalArgumentException("Arquivo local não encontrado")
-                    { FileInputStream(localFile) }
                 }
 
                 connection.uploadFile(
