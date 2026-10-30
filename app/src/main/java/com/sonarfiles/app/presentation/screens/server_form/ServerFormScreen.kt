@@ -27,12 +27,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -245,46 +247,50 @@ fun ServerFormScreen(
                 )
             }
 
-            // Banner de Ajuda Rápida do Windows (para SMB)
-            if (uiState.protocol == ProtocolType.SMB) {
-                Surface(
-                    onClick = { showHelpGuide = true },
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                    border = BorderStroke(1.dp, SonarCyanPrimary.copy(alpha = 0.25f)),
-                    modifier = Modifier.fillMaxWidth()
+            // Banner de Ajuda Rápida adaptável ao Protocolo/OS
+            val isSmb = uiState.protocol == ProtocolType.SMB
+            val helpAccent = if (isSmb) Color(0xFF00A4EF) else Color(0xFFFFB300)
+            Surface(
+                onClick = { showHelpGuide = true },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                border = BorderStroke(1.dp, helpAccent.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.HelpOutline,
-                            contentDescription = null,
-                            tint = SonarCyanPrimary,
-                            modifier = Modifier.size(20.dp)
+                    Icon(
+                        imageVector = if (isSmb) Icons.Filled.Computer else Icons.Filled.Terminal,
+                        contentDescription = null,
+                        tint = helpAccent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isSmb) "Como configurar o Windows (SMB)?" else "Como configurar o Linux (SFTP / SSH)?",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Como configurar o Windows?",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Toque para ver o passo a passo: rede privada, usuário local e permissões",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = null,
-                            tint = SonarCyanPrimary,
-                            modifier = Modifier.size(16.dp)
+                        Text(
+                            text = if (isSmb) {
+                                "Toque para ver o passo a passo: rede privada, usuário local e permissões"
+                            } else {
+                                "Toque para ver o passo a passo: OpenSSH, porta 22 e comandos de terminal"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = helpAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
 
@@ -460,9 +466,12 @@ fun ServerFormScreen(
         }
     }
 
-    // Modal do Guia de Configuração SMB (Windows)
+    // Modal do Guia de Configuração (Windows SMB ou Linux SFTP)
     if (showHelpGuide) {
-        WindowsSmbSetupGuideModal(onDismiss = { showHelpGuide = false })
+        ServerSetupGuideModal(
+            initialProtocol = uiState.protocol,
+            onDismiss = { showHelpGuide = false }
+        )
     }
 }
 
@@ -627,40 +636,44 @@ fun DiagnosticBottomSheetContent(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Atalho para o Guia de Configuração do Windows
-        if (uiState.protocol == ProtocolType.SMB) {
-            Surface(
-                onClick = onOpenHelpGuide,
-                shape = RoundedCornerShape(10.dp),
-                color = SonarCyanPrimary.copy(alpha = 0.08f),
-                border = BorderStroke(1.dp, SonarCyanPrimary.copy(alpha = 0.35f)),
-                modifier = Modifier.fillMaxWidth()
+        // Atalho para o Guia de Configuração (Windows ou Linux)
+        val isSmbInDiag = uiState.protocol == ProtocolType.SMB
+        val diagHelpAccent = if (isSmbInDiag) Color(0xFF00A4EF) else Color(0xFFFFB300)
+        Surface(
+            onClick = onOpenHelpGuide,
+            shape = RoundedCornerShape(10.dp),
+            color = diagHelpAccent.copy(alpha = 0.08f),
+            border = BorderStroke(1.dp, diagHelpAccent.copy(alpha = 0.35f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
-                        contentDescription = null,
-                        tint = SonarCyanPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Como configurar o Windows? Ver Passo a Passo",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = SonarCyanPrimary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = SonarCyanPrimary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
+                Icon(
+                    imageVector = if (isSmbInDiag) Icons.Filled.Computer else Icons.Filled.Terminal,
+                    contentDescription = null,
+                    tint = diagHelpAccent,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = if (isSmbInDiag) {
+                        "Como configurar o Windows? Ver Passo a Passo"
+                    } else {
+                        "Como configurar o Linux? Ver Passo a Passo"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = diagHelpAccent,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = diagHelpAccent,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
 
