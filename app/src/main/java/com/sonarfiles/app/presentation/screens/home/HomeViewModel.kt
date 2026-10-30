@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -25,19 +26,22 @@ class HomeViewModel @Inject constructor(
     private val connectivityObserver: NetworkConnectivityObserver
 ) : ViewModel() {
 
+    private val _isGridView = MutableStateFlow(false)
     private val _errorFlow = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<HomeUiState> = combine(
         serverRepository.getAllServers(),
         serverRepository.getFavoriteServers(),
         connectivityObserver.isWifiConnected,
+        _isGridView,
         _errorFlow
-    ) { allServers, favorites, isWifi, error ->
+    ) { allServers, favorites, isWifi, isGrid, error ->
         HomeUiState(
             isLoading = false,
             servers = allServers,
             favoriteServers = favorites,
             isWifiConnected = isWifi,
+            isGridView = isGrid,
             errorMessage = error
         )
     }.catch { throwable ->
@@ -52,6 +56,10 @@ class HomeViewModel @Inject constructor(
     )
 
     fun isWifiConnected(): Boolean = connectivityObserver.isCurrentlyWifiConnected()
+
+    fun toggleGridView() {
+        _isGridView.update { !it }
+    }
 
     fun toggleFavorite(server: ServerConfig) {
         viewModelScope.launch {
