@@ -31,18 +31,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -59,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -115,19 +115,11 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    // Alternador Lista / Grade
-                    IconButton(onClick = viewModel::toggleGridView) {
+                    IconButton(onClick = { viewModel.probeServers() }) {
                         Icon(
-                            imageVector = if (uiState.isGridView) Icons.Filled.ViewList else Icons.Filled.GridView,
-                            contentDescription = if (uiState.isGridView) "Ver em Lista" else "Ver em Grade",
-                            tint = if (uiState.isGridView) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    IconButton(onClick = onNavigateToManualAdd) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = "Adicionar Servidor",
-                            tint = SonarCyanPrimary
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Atualizar status dos servidores",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = onNavigateToTransfers) {
@@ -144,19 +136,49 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    if (viewModel.isWifiConnected()) {
-                        onNavigateToSonar()
-                    } else {
-                        wifiWarningDialogMessage = "Para varrer a rede local com o Sonar, conecte o dispositivo à rede Wi-Fi."
-                    }
-                },
-                containerColor = SonarCyanPrimary,
-                contentColor = Color.Black,
-                icon = { Icon(Icons.Filled.Radar, contentDescription = null) },
-                text = { Text("Sonar Scan", fontWeight = FontWeight.SemiBold) }
-            )
+            // Botões Flutuantes estilo WhatsApp (empilhados no canto inferior direito)
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Botão Secundário (Estilo Meta AI do WhatsApp): Sonar Scan
+                FloatingActionButton(
+                    onClick = {
+                        if (viewModel.isWifiConnected()) {
+                            onNavigateToSonar()
+                        } else {
+                            wifiWarningDialogMessage = "Para varrer a rede local com o Sonar, conecte o dispositivo à rede Wi-Fi."
+                        }
+                    },
+                    modifier = Modifier.size(46.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = SonarCyanPrimary,
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Radar,
+                        contentDescription = "Sonar Scan (Escanear Rede)",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Botão Principal (Estilo Iniciar Conversa do WhatsApp): Novo Servidor
+                FloatingActionButton(
+                    onClick = onNavigateToManualAdd,
+                    modifier = Modifier.size(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = SonarCyanPrimary,
+                    contentColor = Color.Black,
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Adicionar Servidor",
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -190,14 +212,6 @@ fun HomeScreen(
 
                     uiState.isEmpty -> {
                         EmptyServersView(
-                            onScanClick = {
-                                if (viewModel.isWifiConnected()) {
-                                    onNavigateToSonar()
-                                } else {
-                                    wifiWarningDialogMessage = "Para varrer a rede local com o Sonar, conecte o dispositivo à rede Wi-Fi."
-                                }
-                            },
-                            onManualAddClick = onNavigateToManualAdd,
                             modifier = Modifier.align(Alignment.Center)
                         )
                     }
@@ -223,8 +237,10 @@ fun HomeScreen(
                                 items = uiState.servers,
                                 key = { it.id }
                             ) { server ->
+                                val isAccessible = uiState.serverReachability[server.id]
                                 ServerCardGrid(
                                     server = server,
+                                    isAccessible = isAccessible,
                                     onClick = {
                                         if (viewModel.isWifiConnected()) {
                                             onNavigateToExplorer(server.id)
@@ -265,8 +281,10 @@ fun HomeScreen(
                                 items = uiState.servers,
                                 key = { it.id }
                             ) { server ->
+                                val isAccessible = uiState.serverReachability[server.id]
                                 ServerCardList(
                                     server = server,
+                                    isAccessible = isAccessible,
                                     onClick = {
                                         if (viewModel.isWifiConnected()) {
                                             onNavigateToExplorer(server.id)
@@ -370,8 +388,6 @@ private fun ServersHeader(
 
 @Composable
 fun EmptyServersView(
-    onScanClick: () -> Unit,
-    onManualAddClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -382,7 +398,7 @@ fun EmptyServersView(
         verticalArrangement = Arrangement.Center
     ) {
         Surface(
-            modifier = Modifier.size(80.dp),
+            modifier = Modifier.size(88.dp),
             shape = CircleShape,
             color = SonarCyanPrimary.copy(alpha = 0.12f)
         ) {
@@ -391,7 +407,7 @@ fun EmptyServersView(
                     imageVector = Icons.Filled.Radar,
                     contentDescription = null,
                     tint = SonarCyanPrimary,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(44.dp)
                 )
             }
         }
@@ -405,45 +421,14 @@ fun EmptyServersView(
             color = MaterialTheme.colorScheme.onBackground
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-            text = stringResource(R.string.no_servers_subtitle),
+            text = "Toque no botão flutuante (+) para adicionar um servidor ou no radar para escanear sua rede local.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp)
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 24.dp)
         )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Button(
-            onClick = onScanClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = SonarCyanPrimary,
-                contentColor = Color.Black
-            )
-        ) {
-            Icon(Icons.Filled.Radar, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(stringResource(R.string.action_scan), fontWeight = FontWeight.Bold)
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = onManualAddClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(stringResource(R.string.action_add_manual))
-        }
     }
 }

@@ -1,13 +1,13 @@
 package com.sonarfiles.app.presentation.screens.home.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sonarfiles.app.core.ui.theme.SonarCyanPrimary
@@ -66,7 +67,6 @@ data class ServerOsVisual(
 
 fun ServerConfig.detectOs(): OsHint {
     val name = displayName.lowercase()
-    val share = defaultShareOrPath.lowercase()
     return when {
         name.contains("mac") || name.contains("apple") || name.contains("osx") || name.contains("darwin") -> OsHint.MACOS
         name.contains("nas") || name.contains("synology") || name.contains("truenas") || name.contains("qnap") || name.contains("omv") -> OsHint.NAS
@@ -112,6 +112,7 @@ fun OsHint.getVisual(): ServerOsVisual {
 @Composable
 fun ServerCardList(
     server: ServerConfig,
+    isAccessible: Boolean? = null,
     onClick: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -138,21 +139,30 @@ fun ServerCardList(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Ícone do Sistema Operacional
-            Surface(
-                modifier = Modifier.size(46.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = osVisual.color.copy(alpha = 0.15f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, osVisual.color.copy(alpha = 0.3f))
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = osVisual.icon,
-                        contentDescription = osVisual.label,
-                        tint = osVisual.color,
-                        modifier = Modifier.size(24.dp)
-                    )
+            // Ícone do Sistema Operacional com Ponto Indicador de Acessibilidade
+            Box(modifier = Modifier.size(46.dp)) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = osVisual.color.copy(alpha = 0.15f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, osVisual.color.copy(alpha = 0.3f))
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = osVisual.icon,
+                            contentDescription = osVisual.label,
+                            tint = osVisual.color,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
+
+                // Ponto indicador (Verde = Acessível, Vermelho = Inacessível, Cinza = Testando)
+                ReachabilityStatusDot(
+                    isAccessible = isAccessible,
+                    size = 13.dp,
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                )
             }
 
             Spacer(modifier = Modifier.width(14.dp))
@@ -173,6 +183,8 @@ fun ServerCardList(
                     OsBadge(visual = osVisual)
                     Spacer(modifier = Modifier.width(4.dp))
                     ProtocolBadge(protocol = server.protocol)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    ReachabilityBadge(isAccessible = isAccessible)
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -231,6 +243,7 @@ fun ServerCardList(
 @Composable
 fun ServerCardGrid(
     server: ServerConfig,
+    isAccessible: Boolean? = null,
     onClick: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -256,26 +269,34 @@ fun ServerCardGrid(
                 .fillMaxWidth()
                 .padding(12.dp)
         ) {
-            // Linha Superior: Ícone do SO à esquerda, Favorito e Menu à direita
+            // Linha Superior: Ícone do SO com status à esquerda, Favorito e Menu à direita
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Surface(
-                    modifier = Modifier.size(38.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    color = osVisual.color.copy(alpha = 0.15f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, osVisual.color.copy(alpha = 0.35f))
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = osVisual.icon,
-                            contentDescription = osVisual.label,
-                            tint = osVisual.color,
-                            modifier = Modifier.size(20.dp)
-                        )
+                Box(modifier = Modifier.size(38.dp)) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = osVisual.color.copy(alpha = 0.15f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, osVisual.color.copy(alpha = 0.35f))
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = osVisual.icon,
+                                contentDescription = osVisual.label,
+                                tint = osVisual.color,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
+
+                    ReachabilityStatusDot(
+                        isAccessible = isAccessible,
+                        size = 11.dp,
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                    )
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -330,13 +351,14 @@ fun ServerCardGrid(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Badges: SO e Protocolo
+            // Badges: SO, Protocolo e Status de Acessibilidade
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OsBadge(visual = osVisual)
                 ProtocolBadge(protocol = server.protocol)
+                ReachabilityBadge(isAccessible = isAccessible)
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -369,6 +391,67 @@ fun ServerCardGrid(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ReachabilityStatusDot(
+    isAccessible: Boolean?,
+    modifier: Modifier = Modifier,
+    size: Dp = 13.dp
+) {
+    val dotColor = when (isAccessible) {
+        true -> Color(0xFF00E676)  // Verde Acessível
+        false -> Color(0xFFFF5252) // Vermelho Inacessível
+        null -> Color(0xFF9E9E9E)  // Cinza Testando
+    }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(2.dp)
+            .clip(CircleShape)
+            .background(dotColor)
+    )
+}
+
+@Composable
+fun ReachabilityBadge(isAccessible: Boolean?) {
+    val statusColor = when (isAccessible) {
+        true -> Color(0xFF00E676)
+        false -> Color(0xFFFF5252)
+        null -> Color(0xFF9E9E9E)
+    }
+    val statusText = when (isAccessible) {
+        true -> "Acessível"
+        false -> "Inacessível"
+        null -> "Testando..."
+    }
+
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = statusColor.copy(alpha = 0.15f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(5.dp)
+                    .clip(CircleShape)
+                    .background(statusColor)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+                text = statusText,
+                color = statusColor,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
