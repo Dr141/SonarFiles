@@ -35,16 +35,15 @@ class HomeViewModel @Inject constructor(
 
     val uiState: StateFlow<HomeUiState> = combine(
         serverRepository.getAllServers(),
-        serverRepository.getFavoriteServers(),
         connectivityObserver.isWifiConnected,
         _isGridView,
         _reachabilityMap,
         _errorFlow
-    ) { allServers, favorites, isWifi, isGrid, reachability, error ->
+    ) { allServers, isWifi, isGrid, reachability, error ->
         HomeUiState(
             isLoading = false,
             servers = allServers,
-            favoriteServers = favorites,
+            favoriteServers = allServers.filter { it.isFavorite },
             isWifiConnected = isWifi,
             isGridView = isGrid,
             serverReachability = reachability,
