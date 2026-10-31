@@ -1,7 +1,13 @@
 package com.sonarfiles.app.presentation.screens.explorer
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,36 +30,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.FileProvider
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material.icons.filled.Upload
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.draw.clip
-import com.sonarfiles.app.domain.model.TransferTask
-import com.sonarfiles.app.domain.model.TransferType
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.SmallFloatingActionButton
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -65,12 +56,18 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -85,11 +82,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sonarfiles.app.core.ui.components.BreadcrumbBar
@@ -101,6 +101,8 @@ import com.sonarfiles.app.core.ui.components.getFileIconAndTint
 import com.sonarfiles.app.core.ui.theme.SonarCyanPrimary
 import com.sonarfiles.app.core.ui.theme.StatusError
 import com.sonarfiles.app.domain.model.RemoteFile
+import com.sonarfiles.app.domain.model.TransferTask
+import com.sonarfiles.app.domain.model.TransferType
 import com.sonarfiles.app.domain.usecase.explorer.SortMode
 import com.sonarfiles.app.presentation.screens.server_form.outlinedColors
 
@@ -118,7 +120,7 @@ fun ExplorerScreen(
     var showMenu by remember { mutableStateOf(false) }
     var fileToSave by remember { mutableStateOf<RemoteFile?>(null) }
 
-    // Launcher do SAF para escolher onde salvar o arquivo no telefone
+    // Launcher do SAF para escolher onde salvar 1 arquivo no telefone
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*")
     ) { destinationUri ->
@@ -127,6 +129,16 @@ fun ExplorerScreen(
             fileToSave = null
         }
     }
+
+    // Launcher do SAF para escolher uma pasta de destino ao baixar múltiplos arquivos
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri ->
+        if (treeUri != null) {
+            viewModel.downloadSelectedFilesToTreeUri(treeUri)
+        }
+    }
+
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Launcher para escolher arquivos locais e enviar para o servidor
@@ -187,167 +199,330 @@ fun ExplorerScreen(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = {
-                    if (uiState.isSearchActive) {
-                        OutlinedTextField(
-                            value = uiState.searchQuery,
-                            onValueChange = viewModel::setSearchQuery,
-                            placeholder = { Text("Buscar na pasta...") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = outlinedColors()
-                        )
-                    } else {
+            if (uiState.isSelectionMode) {
+                TopAppBar(
+                    title = {
                         Column {
                             Text(
-                                text = uiState.serverConfig?.displayName ?: "Explorador",
+                                text = "${uiState.selectedFiles.size} selecionado(s)",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1
+                                fontWeight = FontWeight.Bold
                             )
+                            val totalSelectedSize = uiState.selectedFiles.sumOf { it.sizeBytes }
                             Text(
-                                text = "${uiState.files.size} itens",
+                                text = formatFileSize(totalSelectedSize),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = SonarCyanPrimary
                             )
                         }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (uiState.isSearchActive) {
-                                viewModel.toggleSearchActive()
-                            } else {
-                                val navigatedUp = viewModel.navigateUp()
-                                if (!navigatedUp) onNavigateBack()
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::clearSelection) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Cancelar Seleção",
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = viewModel::selectAllFiles) {
+                            Icon(
+                                imageVector = Icons.Filled.SelectAll,
+                                contentDescription = "Selecionar Todos",
+                                tint = SonarCyanPrimary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        if (uiState.isSearchActive) {
+                            OutlinedTextField(
+                                value = uiState.searchQuery,
+                                onValueChange = viewModel::setSearchQuery,
+                                placeholder = { Text("Buscar na pasta...") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = outlinedColors()
+                            )
+                        } else {
+                            Column {
+                                Text(
+                                    text = uiState.serverConfig?.displayName ?: "Explorador",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "${uiState.files.size} itens",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SonarCyanPrimary
+                                )
                             }
                         }
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Voltar",
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = viewModel::toggleSearchActive) {
-                        Icon(
-                            imageVector = if (uiState.isSearchActive) Icons.Filled.Close else Icons.Filled.Search,
-                            contentDescription = "Buscar",
-                            tint = if (uiState.isSearchActive) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    IconButton(onClick = { filePickerLauncher.launch(arrayOf("*/*")) }) {
-                        Icon(
-                            imageVector = Icons.Filled.UploadFile,
-                            contentDescription = "Enviar do Telefone",
-                            tint = SonarCyanPrimary
-                        )
-                    }
-
-                    IconButton(onClick = viewModel::toggleGridView) {
-                        Icon(
-                            imageVector = if (uiState.isGridView) Icons.Filled.ViewList else Icons.Filled.GridView,
-                            contentDescription = "Alternar Visualização",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
+                    },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = {
+                                if (uiState.isSearchActive) {
+                                    viewModel.toggleSearchActive()
+                                } else {
+                                    val navigatedUp = viewModel.navigateUp()
+                                    if (!navigatedUp) onNavigateBack()
+                                }
+                            }
+                        ) {
                             Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "Mais opções",
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Voltar",
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = viewModel::toggleSearchActive) {
+                            Icon(
+                                imageVector = if (uiState.isSearchActive) Icons.Filled.Close else Icons.Filled.Search,
+                                contentDescription = "Buscar",
+                                tint = if (uiState.isSearchActive) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Botão para iniciar seleção múltipla para download
+                        IconButton(onClick = viewModel::toggleSelectionMode) {
+                            Icon(
+                                imageVector = Icons.Filled.Checklist,
+                                contentDescription = "Selecionar múltiplos arquivos",
+                                tint = SonarCyanPrimary
+                            )
+                        }
+
+                        IconButton(onClick = viewModel::toggleGridView) {
+                            Icon(
+                                imageVector = if (uiState.isGridView) Icons.Filled.ViewList else Icons.Filled.GridView,
+                                contentDescription = "Alternar Visualização",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Atualizar") },
-                                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.refresh()
-                                }
-                            )
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = "Mais opções",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
-                            DropdownMenuItem(
-                                text = { Text(if (uiState.showHidden) "Ocultar arquivos ocultos" else "Mostrar arquivos ocultos") },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = if (uiState.showHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                        contentDescription = null
-                                    )
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.toggleShowHidden()
-                                }
-                            )
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Selecionar arquivos para download") },
+                                    leadingIcon = { Icon(Icons.Filled.Checklist, contentDescription = null, tint = SonarCyanPrimary) },
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.toggleSelectionMode()
+                                    }
+                                )
 
-                            DropdownMenuItem(
-                                text = { Text("Ordenar por Nome (A-Z)") },
-                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null) },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.setSortMode(SortMode.NAME_ASC)
-                                }
-                            )
+                                DropdownMenuItem(
+                                    text = { Text("Atualizar") },
+                                    leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.refresh()
+                                    }
+                                )
 
-                            DropdownMenuItem(
-                                text = { Text("Ordenar por Data") },
-                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null) },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.setSortMode(SortMode.DATE_DESC)
-                                }
-                            )
+                                DropdownMenuItem(
+                                    text = { Text(if (uiState.showHidden) "Ocultar arquivos ocultos" else "Mostrar arquivos ocultos") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (uiState.showHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.toggleShowHidden()
+                                    }
+                                )
 
-                            DropdownMenuItem(
-                                text = { Text("Ordenar por Tamanho") },
-                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null) },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.setSortMode(SortMode.SIZE_DESC)
-                                }
-                            )
+                                DropdownMenuItem(
+                                    text = { Text("Ordenar por Nome (A-Z)") },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.setSortMode(SortMode.NAME_ASC)
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = { Text("Ordenar por Data") },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.setSortMode(SortMode.DATE_DESC)
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = { Text("Ordenar por Tamanho") },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.setSortMode(SortMode.SIZE_DESC)
+                                    }
+                                )
+                            }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
                 )
-            )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                SmallFloatingActionButton(
-                    onClick = { viewModel.openCreateFolderDialog(true) },
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+        bottomBar = {
+            // Barra inferior flutuante de Download em Lote quando há arquivos selecionados
+            AnimatedVisibility(visible = uiState.isSelectionMode) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    tonalElevation = 8.dp,
+                    border = BorderStroke(1.dp, SonarCyanPrimary.copy(alpha = 0.35f)),
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
                 ) {
-                    Icon(Icons.Filled.CreateNewFolder, contentDescription = "Nova Pasta")
-                }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (uiState.selectedFiles.isEmpty()) {
+                                    "Toque nos arquivos para selecionar"
+                                } else {
+                                    "${uiState.selectedFiles.size} arquivo(s) • ${formatFileSize(uiState.selectedFiles.sumOf { it.sizeBytes })}"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            TextButton(onClick = viewModel::selectAllFiles) {
+                                Text("Selecionar Todos", color = SonarCyanPrimary, fontSize = 12.sp)
+                            }
+                        }
 
-                ExtendedFloatingActionButton(
-                    onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                    containerColor = SonarCyanPrimary,
-                    contentColor = Color.Black,
-                    icon = { Icon(Icons.Filled.UploadFile, contentDescription = null) },
-                    text = { Text("Enviar", fontWeight = FontWeight.Bold) }
-                )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { folderPickerLauncher.launch(null) },
+                                enabled = uiState.selectedFiles.isNotEmpty(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (uiState.selectedFiles.isNotEmpty()) SonarCyanPrimary else MaterialTheme.colorScheme.outline
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.FolderOpen,
+                                    contentDescription = null,
+                                    tint = if (uiState.selectedFiles.isNotEmpty()) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Escolher Pasta",
+                                    color = if (uiState.selectedFiles.isNotEmpty()) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
+                            }
+
+                            Button(
+                                onClick = viewModel::downloadSelectedFilesToPhone,
+                                enabled = uiState.selectedFiles.isNotEmpty(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SonarCyanPrimary,
+                                    contentColor = Color.Black
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Download,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Baixar (${uiState.selectedFiles.size})",
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        floatingActionButton = {
+            if (!uiState.isSelectionMode) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    FloatingActionButton(
+                        onClick = { viewModel.openCreateFolderDialog(true) },
+                        modifier = Modifier.size(46.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = SonarCyanPrimary,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CreateNewFolder,
+                            contentDescription = "Nova Pasta",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    FloatingActionButton(
+                        onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                        modifier = Modifier.size(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        containerColor = SonarCyanPrimary,
+                        contentColor = Color.Black,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.UploadFile,
+                            contentDescription = "Enviar Arquivo",
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
             }
         }
     ) { innerPadding ->
@@ -463,18 +638,34 @@ fun ExplorerScreen(
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(minSize = 105.dp),
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(items = uiState.files, key = { it.fullPath }) { file ->
+                                val isSelected = file.fullPath in uiState.selectedFilePaths
                                 FileItemGrid(
                                     file = file,
+                                    isSelectionMode = uiState.isSelectionMode,
+                                    isSelected = isSelected,
                                     onClick = {
-                                        if (file.isDirectory) {
-                                            viewModel.navigateTo(file.fullPath)
+                                        if (uiState.isSelectionMode) {
+                                            if (file.isDirectory) {
+                                                viewModel.navigateTo(file.fullPath)
+                                            } else {
+                                                viewModel.toggleFileSelection(file)
+                                            }
                                         } else {
-                                            viewModel.openFile(file)
+                                            if (file.isDirectory) {
+                                                viewModel.navigateTo(file.fullPath)
+                                            } else {
+                                                viewModel.openFile(file)
+                                            }
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (!file.isDirectory) {
+                                            viewModel.toggleFileSelection(file)
                                         }
                                     },
                                     onOptionsClick = {
@@ -488,17 +679,33 @@ fun ExplorerScreen(
                     else -> {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(items = uiState.files, key = { it.fullPath }) { file ->
+                                val isSelected = file.fullPath in uiState.selectedFilePaths
                                 FileItemRow(
                                     file = file,
+                                    isSelectionMode = uiState.isSelectionMode,
+                                    isSelected = isSelected,
                                     onClick = {
-                                        if (file.isDirectory) {
-                                            viewModel.navigateTo(file.fullPath)
+                                        if (uiState.isSelectionMode) {
+                                            if (file.isDirectory) {
+                                                viewModel.navigateTo(file.fullPath)
+                                            } else {
+                                                viewModel.toggleFileSelection(file)
+                                            }
                                         } else {
-                                            viewModel.openFile(file)
+                                            if (file.isDirectory) {
+                                                viewModel.navigateTo(file.fullPath)
+                                            } else {
+                                                viewModel.openFile(file)
+                                            }
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (!file.isDirectory) {
+                                            viewModel.toggleFileSelection(file)
                                         }
                                     },
                                     onOptionsClick = {
@@ -533,6 +740,10 @@ fun ExplorerScreen(
                 },
                 onQuickDownload = {
                     viewModel.downloadFileToPhone(file)
+                },
+                onSelectMultiple = {
+                    viewModel.selectFileForAction(null)
+                    viewModel.toggleFileSelection(file)
                 },
                 onRename = {
                     viewModel.openRenameDialog(true)
@@ -596,6 +807,7 @@ fun FileActionBottomSheetContent(
     onOpen: () -> Unit,
     onSaveAs: () -> Unit,
     onQuickDownload: () -> Unit,
+    onSelectMultiple: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -674,6 +886,17 @@ fun FileActionBottomSheetContent(
                             Icon(Icons.Filled.Download, contentDescription = null, tint = SonarCyanPrimary)
                             Spacer(modifier = Modifier.width(12.dp))
                             Text("Download Rápido (Pasta Downloads)", color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+
+                    TextButton(
+                        onClick = onSelectMultiple,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Checklist, contentDescription = null, tint = SonarCyanPrimary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Selecionar vários arquivos para baixar", color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }

@@ -1,5 +1,12 @@
 package com.sonarfiles.app.presentation.screens.explorer
 
+import android.content.ContentResolver
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,38 +17,32 @@ import com.sonarfiles.app.domain.model.DiagnosticStepResult
 import com.sonarfiles.app.domain.model.ProtocolType
 import com.sonarfiles.app.domain.model.RemoteFile
 import com.sonarfiles.app.domain.model.ServerConfig
+import com.sonarfiles.app.domain.model.TransferStatus
+import com.sonarfiles.app.domain.model.TransferTask
+import com.sonarfiles.app.domain.model.TransferType
 import com.sonarfiles.app.domain.repository.RemoteConnectionFactory
 import com.sonarfiles.app.domain.repository.RemoteFileSystem
 import com.sonarfiles.app.domain.repository.ServerRepository
+import com.sonarfiles.app.domain.repository.TransferRepository
 import com.sonarfiles.app.domain.usecase.connection.UnlockServerCredentialsUseCase
 import com.sonarfiles.app.domain.usecase.explorer.ListDirectoryUseCase
 import com.sonarfiles.app.domain.usecase.explorer.ManageRemoteFileUseCase
 import com.sonarfiles.app.domain.usecase.explorer.SortMode
-import android.content.ContentResolver
-import android.content.Context
-import android.net.Uri
-import android.os.Environment
-import android.provider.OpenableColumns
-import android.webkit.MimeTypeMap
-import com.sonarfiles.app.domain.model.TransferStatus
-import com.sonarfiles.app.domain.model.TransferTask
-import com.sonarfiles.app.domain.model.TransferType
-import com.sonarfiles.app.domain.repository.TransferRepository
-import kotlinx.coroutines.flow.collectLatest
 import com.sonarfiles.app.domain.usecase.transfer.EnqueueTransferUseCase
+import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import java.io.File
-import java.io.FileOutputStream
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
 import javax.inject.Inject
 
 data class OpenFileEvent(
@@ -187,7 +188,15 @@ class ExplorerViewModel @Inject constructor(
     fun loadDirectory(path: String) {
         val fs = activeFileSystem ?: return
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, currentPath = path) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    errorMessage = null,
+                    currentPath = path,
+                    isSelectionMode = false,
+                    selectedFilePaths = emptySet()
+                )
+            }
             val state = _uiState.value
             val result = listDirectoryUseCase(
                 remoteFileSystem = fs,
@@ -222,6 +231,10 @@ class ExplorerViewModel @Inject constructor(
     }
 
     fun navigateUp(): Boolean {
+        if (_uiState.value.isSelectionMode) {
+            clearSelection()
+            return true
+        }
         if (pathStack.size > 1) {
             pathStack.removeLast()
             val previousPath = pathStack.last()
@@ -274,6 +287,50 @@ class ExplorerViewModel @Inject constructor(
             )
         }
         if (!newActive) refresh()
+    }
+
+    // --- Modo de Seleção Múltipla ---
+    fun toggleSelectionMode() {
+        _uiState.update { current ->
+            val nextMode = !current.isSelectionMode
+            current.copy(
+                isSelectionMode = nextMode,
+                selectedFilePaths = if (nextMode) current.selectedFilePaths else emptySet()
+            )
+        }
+    }
+
+    fun toggleFileSelection(file: RemoteFile) {
+        if (file.isDirectory) return
+        _uiState.update { current ->
+            val mutable = current.selectedFilePaths.toMutableSet()
+            if (file.fullPath in mutable) {
+                mutable.remove(file.fullPath)
+            } else {
+                mutable.add(file.fullPath)
+            }
+            current.copy(
+                isSelectionMode = mutable.isNotEmpty(),
+                selectedFilePaths = mutable
+            )
+        }
+    }
+
+    fun selectAllFiles() {
+        _uiState.update { current ->
+            val allFilePaths = current.files.filter { !it.isDirectory }.map { it.fullPath }.toSet()
+            val shouldSelectAll = current.selectedFilePaths.size < allFilePaths.size
+            current.copy(
+                isSelectionMode = true,
+                selectedFilePaths = if (shouldSelectAll) allFilePaths else emptySet()
+            )
+        }
+    }
+
+    fun clearSelection() {
+        _uiState.update {
+            it.copy(isSelectionMode = false, selectedFilePaths = emptySet())
+        }
     }
 
     // Ações de arquivo
@@ -398,9 +455,18 @@ class ExplorerViewModel @Inject constructor(
         }
     }
 
+    private fun resolveDefaultDownloadsDir(): File {
+        val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        return if (publicDownloads != null && (publicDownloads.exists() || publicDownloads.mkdirs()) && publicDownloads.canWrite()) {
+            publicDownloads
+        } else {
+            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+        }
+    }
+
     fun downloadFileToPhone(file: RemoteFile) {
         val server = _uiState.value.serverConfig ?: return
-        val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+        val downloadsDir = resolveDefaultDownloadsDir()
         val destFile = File(downloadsDir, file.name)
 
         viewModelScope.launch {
@@ -416,6 +482,82 @@ class ExplorerViewModel @Inject constructor(
             )
             _uiState.update {
                 it.copy(infoMessage = "Download iniciado: ${file.name}")
+            }
+        }
+    }
+
+    fun downloadSelectedFilesToPhone() {
+        val server = _uiState.value.serverConfig ?: return
+        val selected = _uiState.value.selectedFiles
+        if (selected.isEmpty()) return
+        val downloadsDir = resolveDefaultDownloadsDir()
+
+        viewModelScope.launch {
+            selected.forEach { file ->
+                val destFile = File(downloadsDir, file.name)
+                enqueueTransferUseCase(
+                    serverId = server.id,
+                    serverDisplayName = server.displayName,
+                    remotePath = file.fullPath,
+                    localPath = destFile.absolutePath,
+                    fileName = file.name,
+                    type = TransferType.DOWNLOAD,
+                    totalBytes = file.sizeBytes
+                )
+            }
+            clearSelection()
+            _uiState.update {
+                it.copy(infoMessage = "${selected.size} arquivo(s) adicionado(s) para download!")
+            }
+        }
+    }
+
+    fun downloadSelectedFilesToTreeUri(treeUri: Uri) {
+        val server = _uiState.value.serverConfig ?: return
+        val selected = _uiState.value.selectedFiles
+        if (selected.isEmpty()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            var count = 0
+            try {
+                val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
+                val parentDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeDocId)
+
+                selected.forEach { file ->
+                    try {
+                        val ext = MimeTypeMap.getFileExtensionFromUrl(file.name).lowercase()
+                        val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+                        val destUri = DocumentsContract.createDocument(
+                            context.contentResolver,
+                            parentDocUri,
+                            mimeType,
+                            file.name
+                        )
+                        if (destUri != null) {
+                            enqueueTransferUseCase(
+                                serverId = server.id,
+                                serverDisplayName = server.displayName,
+                                remotePath = file.fullPath,
+                                localPath = destUri.toString(),
+                                fileName = file.name,
+                                type = TransferType.DOWNLOAD,
+                                totalBytes = file.sizeBytes
+                            )
+                            count++
+                        }
+                    } catch (e: Exception) {}
+                }
+            } catch (e: Exception) {}
+
+            clearSelection()
+            if (count > 0) {
+                _uiState.update {
+                    it.copy(infoMessage = "Download iniciado para $count arquivo(s)!")
+                }
+            } else {
+                _uiState.update {
+                    it.copy(errorMessage = "Não foi possível gravar os arquivos na pasta escolhida.")
+                }
             }
         }
     }
@@ -518,6 +660,10 @@ class ExplorerViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        // Conexões continuam no pool para reaproveitamento rápido
+        try {
+            activeFileSystem?.close()
+        } catch (e: Exception) {
+            // Ignorado
+        }
     }
 }

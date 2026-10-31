@@ -3,4 +3,5 @@
     <cache-path name="preview_cache" path="preview_cache/" />
     <files-path name="files" path="." />
     <external-files-path name="external_files" path="." />
+    <external-path name="external_storage" path="." />
 </paths>
