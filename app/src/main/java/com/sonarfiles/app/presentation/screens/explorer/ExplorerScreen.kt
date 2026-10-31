@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -204,7 +205,7 @@ fun ExplorerScreen(
                     title = {
                         Column {
                             Text(
-                                text = "${uiState.selectedFiles.size} selecionado(s)",
+                                text = "${uiState.selectedItems.size} selecionado(s)",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
@@ -226,6 +227,15 @@ fun ExplorerScreen(
                         }
                     },
                     actions = {
+                        if (uiState.selectedItems.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.openConfirmBatchDeleteDialog(true) }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Delete,
+                                    contentDescription = "Apagar Selecionados",
+                                    tint = StatusError
+                                )
+                            }
+                        }
                         IconButton(onClick = viewModel::selectAllFiles) {
                             Icon(
                                 imageVector = Icons.Filled.SelectAll,
@@ -293,11 +303,11 @@ fun ExplorerScreen(
                             )
                         }
 
-                        // Botão para iniciar seleção múltipla para download
+                        // Botão para iniciar seleção múltipla
                         IconButton(onClick = viewModel::toggleSelectionMode) {
                             Icon(
                                 imageVector = Icons.Filled.Checklist,
-                                contentDescription = "Selecionar múltiplos arquivos",
+                                contentDescription = "Selecionar múltiplos itens",
                                 tint = SonarCyanPrimary
                             )
                         }
@@ -324,7 +334,7 @@ fun ExplorerScreen(
                                 onDismissRequest = { showMenu = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Selecionar arquivos para download") },
+                                    text = { Text("Selecionar vários itens") },
                                     leadingIcon = { Icon(Icons.Filled.Checklist, contentDescription = null, tint = SonarCyanPrimary) },
                                     onClick = {
                                         showMenu = false
@@ -392,7 +402,7 @@ fun ExplorerScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            // Barra inferior flutuante de Download em Lote quando há arquivos selecionados
+            // Barra inferior flutuante com navigationBarsPadding() para respeitar os botões nativos do sistema
             AnimatedVisibility(visible = uiState.isSelectionMode) {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -403,6 +413,7 @@ fun ExplorerScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .navigationBarsPadding()
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
                         Row(
@@ -411,10 +422,10 @@ fun ExplorerScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (uiState.selectedFiles.isEmpty()) {
-                                    "Toque nos arquivos para selecionar"
+                                text = if (uiState.selectedItems.isEmpty()) {
+                                    "Toque nos itens para selecionar"
                                 } else {
-                                    "${uiState.selectedFiles.size} arquivo(s) • ${formatFileSize(uiState.selectedFiles.sumOf { it.sizeBytes })}"
+                                    "${uiState.selectedItems.size} item(ns) • ${formatFileSize(uiState.selectedFiles.sumOf { it.sizeBytes })}"
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
@@ -425,11 +436,11 @@ fun ExplorerScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             OutlinedButton(
                                 onClick = { folderPickerLauncher.launch(null) },
@@ -437,6 +448,7 @@ fun ExplorerScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(46.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp),
                                 shape = RoundedCornerShape(12.dp),
                                 border = BorderStroke(
                                     1.dp,
@@ -447,13 +459,14 @@ fun ExplorerScreen(
                                     imageVector = Icons.Filled.FolderOpen,
                                     contentDescription = null,
                                     tint = if (uiState.selectedFiles.isNotEmpty()) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Escolher Pasta",
+                                    text = "Pasta",
                                     color = if (uiState.selectedFiles.isNotEmpty()) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
                                     maxLines = 1
                                 )
                             }
@@ -462,8 +475,9 @@ fun ExplorerScreen(
                                 onClick = viewModel::downloadSelectedFilesToPhone,
                                 enabled = uiState.selectedFiles.isNotEmpty(),
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(1.2f)
                                     .height(46.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = SonarCyanPrimary,
@@ -473,12 +487,42 @@ fun ExplorerScreen(
                                 Icon(
                                     imageVector = Icons.Filled.Download,
                                     contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "Baixar (${uiState.selectedFiles.size})",
                                     fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    maxLines = 1
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = { viewModel.openConfirmBatchDeleteDialog(true) },
+                                enabled = uiState.selectedItems.isNotEmpty(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (uiState.selectedItems.isNotEmpty()) StatusError else MaterialTheme.colorScheme.outline
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Delete,
+                                    contentDescription = null,
+                                    tint = if (uiState.selectedItems.isNotEmpty()) StatusError else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Apagar",
+                                    color = if (uiState.selectedItems.isNotEmpty()) StatusError else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
                                     maxLines = 1
                                 )
                             }
@@ -650,11 +694,7 @@ fun ExplorerScreen(
                                     isSelected = isSelected,
                                     onClick = {
                                         if (uiState.isSelectionMode) {
-                                            if (file.isDirectory) {
-                                                viewModel.navigateTo(file.fullPath)
-                                            } else {
-                                                viewModel.toggleFileSelection(file)
-                                            }
+                                            viewModel.toggleFileSelection(file)
                                         } else {
                                             if (file.isDirectory) {
                                                 viewModel.navigateTo(file.fullPath)
@@ -664,9 +704,7 @@ fun ExplorerScreen(
                                         }
                                     },
                                     onLongClick = {
-                                        if (!file.isDirectory) {
-                                            viewModel.toggleFileSelection(file)
-                                        }
+                                        viewModel.toggleFileSelection(file)
                                     },
                                     onOptionsClick = {
                                         viewModel.selectFileForAction(file)
@@ -690,11 +728,7 @@ fun ExplorerScreen(
                                     isSelected = isSelected,
                                     onClick = {
                                         if (uiState.isSelectionMode) {
-                                            if (file.isDirectory) {
-                                                viewModel.navigateTo(file.fullPath)
-                                            } else {
-                                                viewModel.toggleFileSelection(file)
-                                            }
+                                            viewModel.toggleFileSelection(file)
                                         } else {
                                             if (file.isDirectory) {
                                                 viewModel.navigateTo(file.fullPath)
@@ -704,9 +738,7 @@ fun ExplorerScreen(
                                         }
                                     },
                                     onLongClick = {
-                                        if (!file.isDirectory) {
-                                            viewModel.toggleFileSelection(file)
-                                        }
+                                        viewModel.toggleFileSelection(file)
                                     },
                                     onOptionsClick = {
                                         viewModel.selectFileForAction(file)
@@ -799,6 +831,34 @@ fun ExplorerScreen(
             onConfirm = viewModel::deleteSelectedFile
         )
     }
+
+    if (uiState.isConfirmBatchDeleteDialogOpen && uiState.selectedItems.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { viewModel.openConfirmBatchDeleteDialog(false) },
+            title = { Text("Apagar Selecionados", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = "Tem certeza de que deseja apagar permanentemente ${uiState.selectedItems.size} item(ns) selecionado(s) do servidor?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = viewModel::deleteSelectedItems,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = StatusError,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Apagar Todos", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.openConfirmBatchDeleteDialog(false) }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -815,8 +875,9 @@ fun FileActionBottomSheetContent(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .navigationBarsPadding()
             .padding(horizontal = 24.dp, vertical = 12.dp)
-            .padding(bottom = 24.dp)
+            .padding(bottom = 16.dp)
     ) {
         // Cabeçalho com ícone e nome do arquivo
         Row(
@@ -888,16 +949,16 @@ fun FileActionBottomSheetContent(
                             Text("Download Rápido (Pasta Downloads)", color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
+                }
 
-                    TextButton(
-                        onClick = onSelectMultiple,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Checklist, contentDescription = null, tint = SonarCyanPrimary)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Selecionar vários arquivos para baixar", color = MaterialTheme.colorScheme.onSurface)
-                        }
+                TextButton(
+                    onClick = onSelectMultiple,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Checklist, contentDescription = null, tint = SonarCyanPrimary)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Selecionar vários itens", color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
 
