@@ -2,10 +2,14 @@ package com.sonarfiles.app.service.worker
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.webkit.MimeTypeMap
 import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
@@ -80,7 +84,11 @@ class FileTransferWorker @AssistedInject constructor(
                     } else {
                         val localFile = File(localPath)
                         localFile.parentFile?.mkdirs()
-                        FileOutputStream(localFile)
+                        try {
+                            FileOutputStream(localFile)
+                        } catch (e: Exception) {
+                            openMediaStoreOutputStream(localFile) ?: throw e
+                        }
                     }
                 }
 
@@ -147,6 +155,39 @@ class FileTransferWorker @AssistedInject constructor(
             transferRepository.markCompleted(transferId, TransferStatus.FAILED, e.localizedMessage)
             showCompletionNotification(fileName, isSuccess = false, errorMessage = e.localizedMessage)
             return Result.failure(workDataOf("error" to (e.localizedMessage ?: "Falha na transferência")))
+        }
+    }
+
+    private fun openMediaStoreOutputStream(targetFile: File): OutputStream? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        return try {
+            val extRoot = Environment.getExternalStorageDirectory().absolutePath
+            val parentPath = targetFile.parentFile?.absolutePath.orEmpty()
+            val relativePath = if (parentPath.startsWith(extRoot)) {
+                parentPath.removePrefix(extRoot).trim('/')
+            } else {
+                Environment.DIRECTORY_DOWNLOADS
+            }.ifBlank { Environment.DIRECTORY_DOWNLOADS }
+
+            val ext = MimeTypeMap.getFileExtensionFromUrl(targetFile.name).lowercase()
+            val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, targetFile.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            }
+
+            val collectionUri = if (relativePath.startsWith(Environment.DIRECTORY_DOWNLOADS, ignoreCase = true)) {
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            } else {
+                MediaStore.Files.getContentUri("external")
+            }
+
+            val uri = context.contentResolver.insert(collectionUri, values) ?: return null
+            context.contentResolver.openOutputStream(uri, "wt")
+        } catch (e: Exception) {
+            null
         }
     }
 

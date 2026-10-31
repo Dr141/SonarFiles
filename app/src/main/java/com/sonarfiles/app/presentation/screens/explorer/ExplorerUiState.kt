@@ -37,4 +37,7 @@ data class ExplorerUiState(
 
     val selectedFiles: List<RemoteFile>
         get() = files.filter { !it.isDirectory && it.fullPath in selectedFilePaths }
+
+    val isAllSelected: Boolean
+        get() = files.isNotEmpty() && selectedFilePaths.size >= files.size
 }

@@ -501,7 +501,7 @@ class ExplorerViewModel @Inject constructor(
 
     private fun resolveDefaultDownloadsDir(): File {
         val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        return if (publicDownloads != null && (publicDownloads.exists() || publicDownloads.mkdirs()) && publicDownloads.canWrite()) {
+        return if (publicDownloads != null && (publicDownloads.exists() || publicDownloads.mkdirs())) {
             publicDownloads
         } else {
             context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
@@ -509,9 +509,13 @@ class ExplorerViewModel @Inject constructor(
     }
 
     fun downloadFileToPhone(file: RemoteFile) {
+        downloadFileToLocalDirectory(file, resolveDefaultDownloadsDir())
+    }
+
+    fun downloadFileToLocalDirectory(file: RemoteFile, targetDir: File) {
         val server = _uiState.value.serverConfig ?: return
-        val downloadsDir = resolveDefaultDownloadsDir()
-        val destFile = File(downloadsDir, file.name)
+        targetDir.mkdirs()
+        val destFile = File(targetDir, file.name)
 
         viewModelScope.launch {
             selectFileForAction(null)
@@ -525,20 +529,24 @@ class ExplorerViewModel @Inject constructor(
                 totalBytes = file.sizeBytes
             )
             _uiState.update {
-                it.copy(infoMessage = "Download iniciado: ${file.name}")
+                it.copy(infoMessage = "Download iniciado em '${targetDir.name}': ${file.name}")
             }
         }
     }
 
     fun downloadSelectedFilesToPhone() {
+        downloadSelectedFilesToLocalDirectory(resolveDefaultDownloadsDir())
+    }
+
+    fun downloadSelectedFilesToLocalDirectory(targetDir: File) {
         val server = _uiState.value.serverConfig ?: return
         val selected = _uiState.value.selectedFiles
         if (selected.isEmpty()) return
-        val downloadsDir = resolveDefaultDownloadsDir()
+        targetDir.mkdirs()
 
         viewModelScope.launch {
             selected.forEach { file ->
-                val destFile = File(downloadsDir, file.name)
+                val destFile = File(targetDir, file.name)
                 enqueueTransferUseCase(
                     serverId = server.id,
                     serverDisplayName = server.displayName,
@@ -551,7 +559,7 @@ class ExplorerViewModel @Inject constructor(
             }
             clearSelection()
             _uiState.update {
-                it.copy(infoMessage = "${selected.size} arquivo(s) adicionado(s) para download!")
+                it.copy(infoMessage = "${selected.size} arquivo(s) baixando na pasta '${targetDir.name}'!")
             }
         }
     }

@@ -2,12 +2,14 @@ package com.sonarfiles.app.presentation.screens.explorer
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.os.Environment
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,11 +19,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -31,12 +35,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
@@ -56,6 +63,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -78,6 +87,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -99,6 +109,7 @@ import com.sonarfiles.app.core.ui.components.FileItemRow
 import com.sonarfiles.app.core.ui.components.formatDate
 import com.sonarfiles.app.core.ui.components.formatFileSize
 import com.sonarfiles.app.core.ui.components.getFileIconAndTint
+import com.sonarfiles.app.core.ui.theme.FolderTint
 import com.sonarfiles.app.core.ui.theme.SonarCyanPrimary
 import com.sonarfiles.app.core.ui.theme.StatusError
 import com.sonarfiles.app.domain.model.RemoteFile
@@ -106,6 +117,7 @@ import com.sonarfiles.app.domain.model.TransferTask
 import com.sonarfiles.app.domain.model.TransferType
 import com.sonarfiles.app.domain.usecase.explorer.SortMode
 import com.sonarfiles.app.presentation.screens.server_form.outlinedColors
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -120,8 +132,9 @@ fun ExplorerScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showMenu by remember { mutableStateOf(false) }
     var fileToSave by remember { mutableStateOf<RemoteFile?>(null) }
+    var isLocalFolderPickerOpen by remember { mutableStateOf(false) }
 
-    // Launcher do SAF para escolher onde salvar 1 arquivo no telefone
+    // Launcher do SAF para escolher onde salvar 1 arquivo no telefone (seletor do sistema)
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*")
     ) { destinationUri ->
@@ -131,7 +144,7 @@ fun ExplorerScreen(
         }
     }
 
-    // Launcher do SAF para escolher uma pasta de destino ao baixar múltiplos arquivos
+    // Launcher do SAF para escolher uma pasta de destino no seletor nativo do Android
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
@@ -238,8 +251,8 @@ fun ExplorerScreen(
                         }
                         IconButton(onClick = viewModel::selectAllFiles) {
                             Icon(
-                                imageVector = Icons.Filled.SelectAll,
-                                contentDescription = "Selecionar Todos",
+                                imageVector = if (uiState.isAllSelected) Icons.Filled.Deselect else Icons.Filled.SelectAll,
+                                contentDescription = if (uiState.isAllSelected) "Desmarcar Todos" else "Selecionar Todos",
                                 tint = SonarCyanPrimary
                             )
                         }
@@ -432,7 +445,12 @@ fun ExplorerScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             TextButton(onClick = viewModel::selectAllFiles) {
-                                Text("Selecionar Todos", color = SonarCyanPrimary, fontSize = 12.sp)
+                                Text(
+                                    text = if (uiState.isAllSelected) "Desmarcar Todos" else "Selecionar Todos",
+                                    color = SonarCyanPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                )
                             }
                         }
 
@@ -443,7 +461,10 @@ fun ExplorerScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             OutlinedButton(
-                                onClick = { folderPickerLauncher.launch(null) },
+                                onClick = {
+                                    fileToSave = null
+                                    isLocalFolderPickerOpen = true
+                                },
                                 enabled = uiState.selectedFiles.isNotEmpty(),
                                 modifier = Modifier
                                     .weight(1f)
@@ -752,6 +773,35 @@ fun ExplorerScreen(
         }
     }
 
+    // Seletor de Pasta no Telefone (com botão "USAR ESTA PASTA" de alto contraste e suporte direto à pasta Download)
+    if (isLocalFolderPickerOpen) {
+        LocalFolderPickerBottomSheet(
+            onDismiss = {
+                isLocalFolderPickerOpen = false
+                fileToSave = null
+            },
+            onSelectDirectory = { chosenDir ->
+                isLocalFolderPickerOpen = false
+                val singleFile = fileToSave
+                if (singleFile != null) {
+                    viewModel.downloadFileToLocalDirectory(singleFile, chosenDir)
+                    fileToSave = null
+                } else {
+                    viewModel.downloadSelectedFilesToLocalDirectory(chosenDir)
+                }
+            },
+            onOpenSystemPicker = {
+                isLocalFolderPickerOpen = false
+                val singleFile = fileToSave
+                if (singleFile != null) {
+                    createDocumentLauncher.launch(singleFile.name)
+                } else {
+                    folderPickerLauncher.launch(null)
+                }
+            }
+        )
+    }
+
     // Modal BottomSheet para ações em arquivo selecionado
     if (uiState.selectedFileForAction != null) {
         val file = uiState.selectedFileForAction!!
@@ -768,7 +818,7 @@ fun ExplorerScreen(
                 onSaveAs = {
                     fileToSave = file
                     viewModel.selectFileForAction(null)
-                    createDocumentLauncher.launch(file.name)
+                    isLocalFolderPickerOpen = true
                 },
                 onQuickDownload = {
                     viewModel.downloadFileToPhone(file)
@@ -856,6 +906,290 @@ fun ExplorerScreen(
                 TextButton(onClick = { viewModel.openConfirmBatchDeleteDialog(false) }) {
                     Text("Cancelar")
                 }
+            }
+        )
+    }
+}
+
+private data class QuickLocalDirectory(
+    val label: String,
+    val directory: File
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LocalFolderPickerBottomSheet(
+    onDismiss: () -> Unit,
+    onSelectDirectory: (File) -> Unit,
+    onOpenSystemPicker: () -> Unit
+) {
+    val quickDirs = remember {
+        listOfNotNull(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)?.let { QuickLocalDirectory("Download", it) },
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)?.let { QuickLocalDirectory("Documentos", it) },
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)?.let { QuickLocalDirectory("Imagens", it) },
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)?.let { QuickLocalDirectory("Músicas", it) },
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)?.let { QuickLocalDirectory("Vídeos", it) },
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)?.let { QuickLocalDirectory("DCIM", it) }
+        )
+    }
+
+    val defaultRoot = remember {
+        quickDirs.firstOrNull()?.directory ?: Environment.getExternalStorageDirectory()
+    }
+
+    var currentDir by remember { mutableStateOf(defaultRoot) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    var isCreateLocalFolderOpen by remember { mutableStateOf(false) }
+
+    val subFolders = remember(currentDir, refreshTrigger) {
+        currentDir.mkdirs()
+        currentDir.listFiles()
+            ?.filter { it.isDirectory && !it.name.startsWith(".") }
+            ?.sortedBy { it.name.lowercase() }
+            .orEmpty()
+    }
+
+    val storageRootPath = remember { Environment.getExternalStorageDirectory().absolutePath }
+    val canGoUp = remember(currentDir) {
+        val parent = currentDir.parentFile
+        parent != null && currentDir.absolutePath != storageRootPath && currentDir.absolutePath.startsWith(storageRootPath)
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(bottom = 16.dp)
+        ) {
+            // Cabeçalho
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Escolher Pasta no Telefone",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    val displayRelative = currentDir.absolutePath
+                        .removePrefix(storageRootPath)
+                        .trim('/')
+                        .ifBlank { "Armazenamento Interno" }
+                    Text(
+                        text = "Telefone > ${displayRelative.replace("/", " > ")}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SonarCyanPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { isCreateLocalFolderOpen = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.CreateNewFolder,
+                            contentDescription = "Criar Nova Pasta",
+                            tint = SonarCyanPrimary
+                        )
+                    }
+                    IconButton(onClick = onOpenSystemPicker) {
+                        Icon(
+                            imageVector = Icons.Filled.OpenInNew,
+                            contentDescription = "Seletor do Sistema",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Atalhos rápidos de pastas principais
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(quickDirs) { item ->
+                    val isSelected = currentDir.absolutePath.startsWith(item.directory.absolutePath)
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { currentDir = item.directory },
+                        label = { Text(item.label, fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = SonarCyanPrimary.copy(alpha = 0.2f),
+                            selectedLabelColor = SonarCyanPrimary,
+                            selectedLeadingIconColor = SonarCyanPrimary
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Botão voltar nível se estiver em subpasta
+            if (canGoUp) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            currentDir.parentFile?.let { currentDir = it }
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Pasta anterior",
+                            tint = SonarCyanPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Voltar para ${currentDir.parentFile?.name ?: "pasta anterior"}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            // Grade de subpastas (semelhante ao gerenciador do Android, porém sem bloqueio)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 160.dp, max = 300.dp)
+            ) {
+                if (subFolders.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.FolderOpen,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Nenhuma subpasta em '${currentDir.name}'",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(onClick = { isCreateLocalFolderOpen = true }) {
+                            Text("CRIAR NOVA PASTA", color = SonarCyanPrimary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(subFolders, key = { it.absolutePath }) { folder ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { currentDir = folder }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Folder,
+                                        contentDescription = null,
+                                        tint = FolderTint,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = folder.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Botão "USAR ESTA PASTA" com cor de fundo vibrante (SonarCyanPrimary) e texto escuro de alto contraste
+            Button(
+                onClick = { onSelectDirectory(currentDir) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SonarCyanPrimary,
+                    contentColor = Color.Black
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "USAR ESTA PASTA (${currentDir.name})",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+
+    if (isCreateLocalFolderOpen) {
+        CreateFolderDialog(
+            onDismiss = { isCreateLocalFolderOpen = false },
+            onConfirm = { newFolderName ->
+                val created = File(currentDir, newFolderName)
+                if (created.exists() || created.mkdirs()) {
+                    currentDir = created
+                    refreshTrigger++
+                }
+                isCreateLocalFolderOpen = false
             }
         )
     }
