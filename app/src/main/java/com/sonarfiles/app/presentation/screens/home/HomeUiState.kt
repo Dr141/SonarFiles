@@ -8,6 +8,7 @@ data class HomeUiState(
     val favoriteServers: List<ServerConfig> = emptyList(),
     val isWifiConnected: Boolean = true,
     val isGridView: Boolean = false,
+    val serverReachability: Map<Long, Boolean?> = emptyMap(),
     val errorMessage: String? = null
 ) {
     val isEmpty: Boolean

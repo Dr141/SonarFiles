@@ -32,12 +32,12 @@ class PortProber @Inject constructor(
             socket.connect(InetSocketAddress(ip, port), timeoutMs)
             val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
             PortProbeResult(port = port, isOpen = true, latencyMs = elapsedMs.coerceAtLeast(1))
-        } catch (_: IOException) {
+        } catch (e: IOException) {
             PortProbeResult(port = port, isOpen = false, latencyMs = -1)
         } finally {
             try {
                 socket?.close()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
             }
         }
     }
