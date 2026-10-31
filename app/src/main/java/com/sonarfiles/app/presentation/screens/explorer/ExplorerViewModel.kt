@@ -301,7 +301,6 @@ class ExplorerViewModel @Inject constructor(
     }
 
     fun toggleFileSelection(file: RemoteFile) {
-        if (file.isDirectory) return
         _uiState.update { current ->
             val mutable = current.selectedFilePaths.toMutableSet()
             if (file.fullPath in mutable) {
@@ -318,22 +317,67 @@ class ExplorerViewModel @Inject constructor(
 
     fun selectAllFiles() {
         _uiState.update { current ->
-            val allFilePaths = current.files.filter { !it.isDirectory }.map { it.fullPath }.toSet()
-            val shouldSelectAll = current.selectedFilePaths.size < allFilePaths.size
+            val allPaths = current.files.map { it.fullPath }.toSet()
+            val shouldSelectAll = current.selectedFilePaths.size < allPaths.size
             current.copy(
                 isSelectionMode = true,
-                selectedFilePaths = if (shouldSelectAll) allFilePaths else emptySet()
+                selectedFilePaths = if (shouldSelectAll) allPaths else emptySet()
             )
         }
     }
 
     fun clearSelection() {
         _uiState.update {
-            it.copy(isSelectionMode = false, selectedFilePaths = emptySet())
+            it.copy(
+                isSelectionMode = false,
+                selectedFilePaths = emptySet(),
+                isConfirmBatchDeleteDialogOpen = false
+            )
         }
     }
 
-    // Ações de arquivo
+    fun openConfirmBatchDeleteDialog(isOpen: Boolean) {
+        _uiState.update { it.copy(isConfirmBatchDeleteDialogOpen = isOpen) }
+    }
+
+    fun deleteSelectedItems() {
+        val fs = activeFileSystem ?: return
+        val itemsToDelete = _uiState.value.selectedItems
+        if (itemsToDelete.isEmpty()) return
+
+        viewModelScope.launch {
+            var deletedCount = 0
+            var lastError: String? = null
+
+            itemsToDelete.forEach { item ->
+                val result = manageRemoteFileUseCase.delete(fs, item.fullPath, recursive = true)
+                if (result.isSuccess) {
+                    deletedCount++
+                } else {
+                    lastError = ConnectionErrorFormatter.cleanTechnicalJargon(
+                        result.exceptionOrNull()?.localizedMessage.orEmpty()
+                    )
+                }
+            }
+
+            openConfirmBatchDeleteDialog(false)
+            clearSelection()
+            refresh()
+
+            if (deletedCount > 0) {
+                _uiState.update {
+                    it.copy(infoMessage = "$deletedCount item(ns) excluído(s) com sucesso!")
+                }
+            }
+            if (lastError != null && deletedCount < itemsToDelete.size) {
+                _uiState.update {
+                    it.copy(errorMessage = "Erro ao excluir alguns itens: $lastError")
+                }
+            }
+        }
+    }
+
+    // Ações de arquivo individual
     fun selectFileForAction(file: RemoteFile?) {
         _uiState.update { it.copy(selectedFileForAction = file) }
     }

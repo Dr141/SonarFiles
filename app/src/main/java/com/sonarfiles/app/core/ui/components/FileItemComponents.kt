@@ -3,7 +3,6 @@ package com.sonarfiles.app.core.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -84,7 +83,7 @@ fun FileItemRow(
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isSelectionMode && !file.isDirectory) {
+            if (isSelectionMode) {
                 Icon(
                     imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
                     contentDescription = if (isSelected) "Selecionado" else "Não selecionado",
@@ -204,7 +203,7 @@ fun FileItemGrid(
                     }
                 }
 
-                if (isSelectionMode && !file.isDirectory) {
+                if (isSelectionMode) {
                     Icon(
                         imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
                         contentDescription = if (isSelected) "Selecionado" else "Não selecionado",
@@ -213,7 +212,7 @@ fun FileItemGrid(
                             .size(22.dp)
                             .align(Alignment.TopEnd)
                     )
-                } else if (!isSelectionMode) {
+                } else {
                     IconButton(
                         onClick = onOptionsClick,
                         modifier = Modifier

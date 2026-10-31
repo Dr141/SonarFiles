@@ -23,6 +23,7 @@ data class ExplorerUiState(
     val isCreateFolderDialogOpen: Boolean = false,
     val isRenameDialogOpen: Boolean = false,
     val isConfirmDeleteDialogOpen: Boolean = false,
+    val isConfirmBatchDeleteDialogOpen: Boolean = false,
     val isOpeningFile: Boolean = false,
     val openingFileName: String? = null,
     val infoMessage: String? = null,
@@ -30,6 +31,9 @@ data class ExplorerUiState(
 ) {
     val isEmpty: Boolean
         get() = !isLoading && files.isEmpty()
+
+    val selectedItems: List<RemoteFile>
+        get() = files.filter { it.fullPath in selectedFilePaths }
 
     val selectedFiles: List<RemoteFile>
         get() = files.filter { !it.isDirectory && it.fullPath in selectedFilePaths }
