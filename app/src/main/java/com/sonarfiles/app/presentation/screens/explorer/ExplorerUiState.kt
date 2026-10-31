@@ -17,6 +17,8 @@ data class ExplorerUiState(
     val sortMode: SortMode = SortMode.NAME_ASC,
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
+    val isSelectionMode: Boolean = false,
+    val selectedFilePaths: Set<String> = emptySet(),
     val selectedFileForAction: RemoteFile? = null,
     val isCreateFolderDialogOpen: Boolean = false,
     val isRenameDialogOpen: Boolean = false,
@@ -28,4 +30,7 @@ data class ExplorerUiState(
 ) {
     val isEmpty: Boolean
         get() = !isLoading && files.isEmpty()
+
+    val selectedFiles: List<RemoteFile>
+        get() = files.filter { !it.isDirectory && it.fullPath in selectedFilePaths }
 }

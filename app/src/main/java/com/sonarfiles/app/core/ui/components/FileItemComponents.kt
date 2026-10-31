@@ -1,6 +1,8 @@
 package com.sonarfiles.app.core.ui.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
@@ -22,6 +25,7 @@ import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,28 +43,39 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sonarfiles.app.core.ui.theme.SonarCyanPrimary
 import com.sonarfiles.app.domain.model.RemoteFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileItemRow(
     file: RemoteFile,
     onClick: () -> Unit,
     onOptionsClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null
 ) {
+    val containerColor = if (isSelected) {
+        SonarCyanPrimary.copy(alpha = 0.14f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-        ),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = if (isSelected) BorderStroke(1.5.dp, SonarCyanPrimary) else null,
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
@@ -69,6 +84,16 @@ fun FileItemRow(
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (isSelectionMode && !file.isDirectory) {
+                Icon(
+                    imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                    contentDescription = if (isSelected) "Selecionado" else "Não selecionado",
+                    tint = if (isSelected) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+
             val (icon, tint) = getFileIconAndTint(file)
             Surface(
                 modifier = Modifier.size(42.dp),
@@ -112,32 +137,46 @@ fun FileItemRow(
                 )
             }
 
-            IconButton(onClick = onOptionsClick) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = "Opções",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            if (!isSelectionMode) {
+                IconButton(onClick = onOptionsClick) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "Opções",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileItemGrid(
     file: RemoteFile,
     onClick: () -> Unit,
     onOptionsClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null
 ) {
+    val containerColor = if (isSelected) {
+        SonarCyanPrimary.copy(alpha = 0.14f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-        ),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = if (isSelected) BorderStroke(1.5.dp, SonarCyanPrimary) else null,
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(
@@ -165,18 +204,29 @@ fun FileItemGrid(
                     }
                 }
 
-                IconButton(
-                    onClick = onOptionsClick,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .align(Alignment.TopEnd)
-                ) {
+                if (isSelectionMode && !file.isDirectory) {
                     Icon(
-                        imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "Opções",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
+                        imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                        contentDescription = if (isSelected) "Selecionado" else "Não selecionado",
+                        tint = if (isSelected) SonarCyanPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .align(Alignment.TopEnd)
                     )
+                } else if (!isSelectionMode) {
+                    IconButton(
+                        onClick = onOptionsClick,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .align(Alignment.TopEnd)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "Opções",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 

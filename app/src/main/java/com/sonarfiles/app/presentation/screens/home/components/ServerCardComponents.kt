@@ -107,7 +107,9 @@ fun OsHint.getVisual(): ServerOsVisual {
 }
 
 /**
- * Card no formato Lista (Row expandida)
+ * Card no formato Lista (Row expandida):
+ * 1ª linha: Apenas o nome do servidor
+ * 2ª linha: Badges (SO e Protocolo) + IP:Porta
  */
 @Composable
 fun ServerCardList(
@@ -139,7 +141,7 @@ fun ServerCardList(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Ícone do Sistema Operacional com Ponto Indicador de Acessibilidade
+            // Ícone do Sistema Operacional com Bolinha Verde/Vermelha de Acessibilidade
             Box(modifier = Modifier.size(46.dp)) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -157,7 +159,7 @@ fun ServerCardList(
                     }
                 }
 
-                // Ponto indicador (Verde = Acessível, Vermelho = Inacessível, Cinza = Testando)
+                // Apenas a bolinha verde (acessível) ou vermelha (inacessível)
                 ReachabilityStatusDot(
                     isAccessible = isAccessible,
                     size = 13.dp,
@@ -167,36 +169,39 @@ fun ServerCardList(
 
             Spacer(modifier = Modifier.width(14.dp))
 
-            // Detalhes do Servidor
+            // Detalhes do Servidor: 1ª linha apenas o nome, embaixo as demais informações
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = server.displayName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    OsBadge(visual = osVisual)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    ProtocolBadge(protocol = server.protocol)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    ReachabilityBadge(isAccessible = isAccessible)
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
+                // Primeira linha: Apenas o nome
                 Text(
-                    text = "${server.hostOrIp}:${server.port}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = server.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
                 )
 
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Segunda linha: Badges (SO e Protocolo) + IP:Porta
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OsBadge(visual = osVisual)
+                    ProtocolBadge(protocol = server.protocol)
+                    Text(
+                        text = "${server.hostOrIp}:${server.port}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 if (!server.macAddress.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = "MAC: ${server.macAddress}",
                         style = MaterialTheme.typography.labelSmall,
@@ -269,7 +274,7 @@ fun ServerCardGrid(
                 .fillMaxWidth()
                 .padding(12.dp)
         ) {
-            // Linha Superior: Ícone do SO com status à esquerda, Favorito e Menu à direita
+            // Linha Superior: Ícone do SO com bolinha de status à esquerda, Favorito e Menu à direita
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -351,14 +356,13 @@ fun ServerCardGrid(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Badges: SO, Protocolo e Status de Acessibilidade
+            // Badges: Apenas SO e Protocolo (sem texto escrito de acessível)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OsBadge(visual = osVisual)
                 ProtocolBadge(protocol = server.protocol)
-                ReachabilityBadge(isAccessible = isAccessible)
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -416,44 +420,6 @@ fun ReachabilityStatusDot(
             .clip(CircleShape)
             .background(dotColor)
     )
-}
-
-@Composable
-fun ReachabilityBadge(isAccessible: Boolean?) {
-    val statusColor = when (isAccessible) {
-        true -> Color(0xFF00E676)
-        false -> Color(0xFFFF5252)
-        null -> Color(0xFF9E9E9E)
-    }
-    val statusText = when (isAccessible) {
-        true -> "Acessível"
-        false -> "Inacessível"
-        null -> "Testando..."
-    }
-
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = statusColor.copy(alpha = 0.15f)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(5.dp)
-                    .clip(CircleShape)
-                    .background(statusColor)
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Text(
-                text = statusText,
-                color = statusColor,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
 }
 
 @Composable

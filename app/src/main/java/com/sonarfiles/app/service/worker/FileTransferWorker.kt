@@ -1,14 +1,10 @@
 package com.sonarfiles.app.service.worker
 
 import android.app.NotificationChannel
-import android.net.Uri
-import java.io.InputStream
-import java.io.OutputStream
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
@@ -30,16 +26,18 @@ import kotlinx.coroutines.flow.collectLatest
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 
 @HiltWorker
 class FileTransferWorker @AssistedInject constructor(
     @Assisted private val context: Context,
-    @Assisted private val params: WorkerParameters,
+    @Assisted workerParams: WorkerParameters,
     private val serverRepository: ServerRepository,
     private val credentialRepository: CredentialRepository,
     private val connectionFactory: RemoteConnectionFactory,
     private val transferRepository: TransferRepository
-) : CoroutineWorker(context, params) {
+) : CoroutineWorker(context, workerParams) {
 
     private val notificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -55,7 +53,11 @@ class FileTransferWorker @AssistedInject constructor(
         val transferType = TransferType.valueOf(transferTypeStr)
 
         createNotificationChannel()
-        setForeground(createForegroundInfo(fileName, 0, 0L, totalBytes))
+        try {
+            setForeground(createForegroundInfo(fileName, 0, 0L, totalBytes))
+        } catch (e: Exception) {
+            // Ignora se o Android restringir Foreground Service em background
+        }
 
         try {
             transferRepository.updateProgress(transferId, 0L, 0L, TransferStatus.RUNNING)
@@ -88,10 +90,12 @@ class FileTransferWorker @AssistedInject constructor(
                     totalBytes = totalBytes
                 ).collectLatest { progress ->
                     val now = System.currentTimeMillis()
-                    if (now - lastNotificationTime >= 500) {
+                    if (now - lastNotificationTime >= 350) {
                         lastNotificationTime = now
                         val percent = (progress.fraction * 100).toInt()
-                        setForeground(createForegroundInfo(fileName, percent, progress.speedBytesPerSec, totalBytes))
+                        try {
+                            setForeground(createForegroundInfo(fileName, percent, progress.speedBytesPerSec, totalBytes))
+                        } catch (e: Exception) {}
                         transferRepository.updateProgress(
                             transferId,
                             progress.bytesTransferred,
@@ -119,10 +123,12 @@ class FileTransferWorker @AssistedInject constructor(
                     totalBytes = totalBytes
                 ).collectLatest { progress ->
                     val now = System.currentTimeMillis()
-                    if (now - lastNotificationTime >= 500) {
+                    if (now - lastNotificationTime >= 350) {
                         lastNotificationTime = now
                         val percent = (progress.fraction * 100).toInt()
-                        setForeground(createForegroundInfo(fileName, percent, progress.speedBytesPerSec, totalBytes))
+                        try {
+                            setForeground(createForegroundInfo(fileName, percent, progress.speedBytesPerSec, totalBytes))
+                        } catch (e: Exception) {}
                         transferRepository.updateProgress(
                             transferId,
                             progress.bytesTransferred,
@@ -133,6 +139,7 @@ class FileTransferWorker @AssistedInject constructor(
                 }
             }
 
+            transferRepository.updateProgress(transferId, totalBytes, 0L, TransferStatus.COMPLETED)
             transferRepository.markCompleted(transferId, TransferStatus.COMPLETED)
             showCompletionNotification(fileName, isSuccess = true)
             return Result.success()
@@ -171,14 +178,16 @@ class FileTransferWorker @AssistedInject constructor(
     }
 
     private fun showCompletionNotification(fileName: String, isSuccess: Boolean, errorMessage: String? = null) {
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setContentTitle(if (isSuccess) "Transferência Concluída" else "Falha na Transferência")
-            .setContentText(if (isSuccess) fileName else "$fileName: $errorMessage")
-            .setSmallIcon(if (isSuccess) android.R.drawable.stat_sys_download_done else android.R.drawable.stat_notify_error)
-            .setAutoCancel(true)
-            .build()
+        try {
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setContentTitle(if (isSuccess) "Transferência Concluída" else "Falha na Transferência")
+                .setContentText(if (isSuccess) fileName else "$fileName: $errorMessage")
+                .setSmallIcon(if (isSuccess) android.R.drawable.stat_sys_download_done else android.R.drawable.stat_notify_error)
+                .setAutoCancel(true)
+                .build()
 
-        notificationManager.notify(fileName.hashCode(), notification)
+            notificationManager.notify(fileName.hashCode(), notification)
+        } catch (e: Exception) {}
     }
 
     private fun createNotificationChannel() {
