@@ -211,3 +211,30 @@ jobs:
           # Garante a exclusão da branch remota no GitHub caso ainda exista
           echo "🗑️ Garantindo exclusão da branch remota '$SOURCE_BRANCH' no GitHub..."
           git push origin --delete "$SOURCE_BRANCH" 2>/dev/null || true
+
+      - name: 🧹 Limpar Releases Antigas (Manter apenas as 3 mais recentes publicadas)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Verificando releases publicadas no repositório..."
+
+          # Obtém as tags de todas as releases publicadas, ordenadas da mais recente para a mais antiga (excluindo rascunhos)
+          ALL_RELEASES=$(gh release list --limit 100 --exclude-drafts --json tagName --jq '.[].tagName')
+
+          # Filtra todas as releases a partir da 4ª (ou seja, preserva as 3 mais recentes)
+          OLD_RELEASES=$(echo "$ALL_RELEASES" | tail -n +4)
+
+          if [ -z "$OLD_RELEASES" ]; then
+            echo "✅ Existem 3 ou menos releases publicadas. Nenhuma exclusão necessária."
+          else
+            echo "🗑️ Releases antigas identificadas para remoção dos arquivos pesados (APKs/AABs):"
+            echo "$OLD_RELEASES"
+
+            for TAG in $OLD_RELEASES; do
+              echo "Excluindo release antiga (removendo binários e preservando a Git tag): $TAG..."
+              # Sem --cleanup-tag para preservar a tag no Git e remover apenas a release e seus arquivos instaladores pesados
+              gh release delete "$TAG" --yes 2>/dev/null || true
+            done
+
+            echo "🎉 Limpeza concluída com sucesso! Apenas as 3 releases mais recentes foram mantidas com seus instaladores."
+          fi
