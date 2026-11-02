@@ -34,12 +34,10 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -89,8 +87,6 @@ fun SupervisedTourOverlay(
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             // Posicionamento inteligente do card:
-            // Para passos que destacam a parte inferior (como botões flutuantes), o card fica alinhado ao topo.
-            // Para os demais, fica no centro ou alinhado à base.
             val cardAlignment = when (step.highlightZone) {
                 TourHighlightZone.FLOATING_ACTIONS -> Alignment.TopCenter
                 TourHighlightZone.SERVERS_OVERVIEW -> Alignment.BottomCenter
@@ -144,7 +140,7 @@ fun SupervisedTourOverlay(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "TREINAMENTO SUPERVISIONADO",
+                                        text = "TREINAMENTO",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = SonarCyanPrimary,
@@ -153,24 +149,34 @@ fun SupervisedTourOverlay(
                                 }
                             }
 
-                            // Botão Pular sempre acessível
-                            TextButton(
-                                onClick = onSkip,
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            // Botão Pular em formato de pílula elegante e sem quebras de linha
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.background.copy(alpha = 0.7f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .clickable { onSkip() }
                             ) {
-                                Text(
-                                    text = "Pular Treinamento",
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "Pular",
-                                    tint = Color.White.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(14.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Pular",
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "Pular Treinamento",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -281,10 +287,11 @@ fun SupervisedTourOverlay(
                                             color = Color.White.copy(alpha = 0.7f)
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
@@ -293,27 +300,32 @@ fun SupervisedTourOverlay(
                                             modifier = Modifier.weight(1f)
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(vertical = 6.dp, horizontal = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
+                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
                                             ) {
-                                                Icon(Icons.Filled.Folder, contentDescription = null, tint = SonarCyanPrimary, modifier = Modifier.size(14.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Pasta", fontSize = 11.sp, color = SonarCyanPrimary, fontWeight = FontWeight.Bold)
+                                                Icon(Icons.Filled.Folder, contentDescription = null, tint = SonarCyanPrimary, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Pasta", fontSize = 12.sp, color = SonarCyanPrimary, fontWeight = FontWeight.Bold)
                                             }
                                         }
 
+                                        // Botão com apenas o ícone, sem texto sobrecarregado
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
                                             color = SonarCyanPrimary,
-                                            modifier = Modifier.weight(1.3f)
+                                            modifier = Modifier.weight(0.7f)
                                         ) {
-                                            Row(
-                                                modifier = Modifier.padding(vertical = 6.dp, horizontal = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
+                                            Box(
+                                                modifier = Modifier.padding(vertical = 8.dp),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color.Black, modifier = Modifier.size(14.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("USAR ESTA PASTA", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                                Icon(
+                                                    imageVector = Icons.Filled.CheckCircle,
+                                                    contentDescription = "Confirmar seleção",
+                                                    tint = Color.Black,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
                                             }
                                         }
 
@@ -324,12 +336,13 @@ fun SupervisedTourOverlay(
                                             modifier = Modifier.weight(1f)
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(vertical = 6.dp, horizontal = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
+                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
                                             ) {
-                                                Icon(Icons.Filled.Delete, contentDescription = null, tint = StatusError, modifier = Modifier.size(14.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Apagar", fontSize = 11.sp, color = StatusError, fontWeight = FontWeight.Bold)
+                                                Icon(Icons.Filled.Delete, contentDescription = null, tint = StatusError, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Apagar", fontSize = 12.sp, color = StatusError, fontWeight = FontWeight.Bold)
                                             }
                                         }
                                     }
@@ -390,7 +403,9 @@ fun SupervisedTourOverlay(
                                     Text("Anterior")
                                 }
                             } else {
-                                Spacer(modifier = Modifier.width(1.dp))
+                                TextButton(onClick = onSkip) {
+                                    Text("Pular Treinamento", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
 
                             Button(

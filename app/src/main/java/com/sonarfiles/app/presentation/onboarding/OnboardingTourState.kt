@@ -97,7 +97,7 @@ object TourStepsProvider {
             tips = listOf(
                 "📂 Abrir Direto: Toque em qualquer foto, vídeo ou documento para abrir no celular.",
                 "✅ Seleção Múltipla: Selecione vários itens com 'Selecionar Todos' ou 'Desmarcar Todos'.",
-                "📥 Escolher Pasta: Salve onde quiser no telefone com o botão 'USAR ESTA PASTA'.",
+                "📥 Escolher Pasta: Salve onde quiser no telefone tocando no botão com ícone (✔).",
                 "🗑️ Apagar em Lote: Exclua vários arquivos e pastas de uma só vez do servidor remoto."
             ),
             highlightZone = TourHighlightZone.EXPLORER_ACTIONS

@@ -130,18 +130,18 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun skipTour(navController: NavHostController) {
+        _uiState.update { it.copy(isTourActive = false) }
+        navController.popBackStack(ScreenRoutes.Home, inclusive = false)
         viewModelScope.launch {
             onboardingPreferences.setOnboardingCompleted(true)
-            _uiState.update { it.copy(isTourActive = false) }
-            navController.popBackStack(ScreenRoutes.Home, inclusive = false)
         }
     }
 
     private fun finishTour(navController: NavHostController) {
+        _uiState.update { it.copy(isTourActive = false) }
+        navController.popBackStack(ScreenRoutes.Home, inclusive = false)
         viewModelScope.launch {
             onboardingPreferences.setOnboardingCompleted(true)
-            _uiState.update { it.copy(isTourActive = false) }
-            navController.popBackStack(ScreenRoutes.Home, inclusive = false)
         }
     }
 }
